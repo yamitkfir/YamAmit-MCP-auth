@@ -1,0 +1,1 @@
+# YamAmit-MCP-auth
