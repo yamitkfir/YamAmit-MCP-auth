@@ -1,0 +1,64 @@
+{
+  "target": "https://mcp.example4.ai/mcp",
+  "protocol_version": "2025-03-26",
+  "server_info": {
+    "name": "xmp4",
+    "version": "1.2.7"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-03-26"
+  ],
+  "summary": {
+    "HAS_GAP": 1,
+    "NO_GAP": 1,
+    "NOT_APPLICABLE": 1,
+    "INCONCLUSIVE": 2
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "https://mcp.example4.ai/mcp -> HTTP 200\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"8b40aaba-1e6b-4083-9674-fb931f7f02f0\",\"result\":{\"tools\":[{\"name\":\"xmp4_callees\",\"description\":\"Find direct callees (methods called by) a symbol in a project. Navigate step-by-step by calling xmp4_callees again on interesting results.\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"docs\":{\"description\":\"Include docs: none (default",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 16 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://mcp.example4.ai/mcp)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "https://mcp.example4.ai/mcp -> HTTP 200\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"e2758448-f3c6-4204-8246-5033787e55f0\",\"result\":{\"tools\":[{\"name\":\"xmp4_callees\",\"description\":\"Find direct callees (methods called by) a symbol in a project. Navigate step-by-step by calling xmp4_callees again on interesting results.\",\"inputSchema\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"properties\":{\"docs\":{\"description\":\"Include docs: none (default",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "Server did not issue a 401/403, so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://mcp.example4.ai/.well-known/oauth-protected-resource -> HTTP 200\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>LSAI + xmp4 \u2014 Compiler-grade intelligence for AI agents</title>\n<meta name=\"description\" content=\"LSAI gives your AI agent compiler-grade vision on your code. xmp4 gives it the same on 900+ OSS libraries. Together: the AI sees everything the compiler sees.\">\n",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "No metadata doc; server negotiated <2025-06-18 where 9728 is not a MUST."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://mcp.example4.ai/mcp -> HTTP 200\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"62fa17bd-b61c-4c7c-bc5b-a7dc147399d8\",\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"xmp4\",\"version\":\"1.2.7\"},\"instructions\":\"xmp4 \u2014 Code intelligence via SCIP. Step 1: xmp4_projects(language, query) to find projects. Step 2: use the project identifier (e.g. 'requests/requests') with xmp4_search, xmp4_info, xmp4_usages, xmp4_",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed."
+    }
+  ]
+}

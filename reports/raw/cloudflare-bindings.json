@@ -1,0 +1,59 @@
+{
+  "target": "https://bindings.mcp.cloudflare.com/sse",
+  "protocol_version": null,
+  "server_info": {},
+  "discovery": [
+    "initialize -> HTTP 401, protocolVersion=unspecified"
+  ],
+  "summary": {
+    "NO_GAP": 4,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "NO_GAP",
+      "severity": "critical",
+      "evidence": "https://bindings.mcp.cloudflare.com/sse -> HTTP 401\n{\"error\":\"invalid_token\",\"error_description\":\"Missing or invalid access token\"}",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "Server rejects unauthenticated privileged calls."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://bindings.mcp.cloudflare.com/sse)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "WWW-Authenticate: Bearer realm=\"OAuth\", resource_metadata=\"https://bindings.mcp.cloudflare.com/.well-known/oauth-protected-resource/sse\", error=\"invalid_token\", error_description=\"Missing or invalid access token\"",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "https://bindings.mcp.cloudflare.com/.well-known/oauth-protected-resource -> HTTP 200\n{\"resource\":\"https://bindings.mcp.cloudflare.com\",\"authorization_servers\":[\"https://bindings.mcp.cloudflare.com\"],\"bearer_methods_supported\":[\"header\"]}",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "authorization_servers present (1 entry)."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://bindings.mcp.cloudflare.com/sse -> HTTP 401\n{\"error\":\"invalid_token\",\"error_description\":\"Missing or invalid access token\"}",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed."
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "target": "https://api.openmandate.ai/mcp",
+  "protocol_version": "2025-03-26",
+  "server_info": {
+    "name": "openmandate",
+    "version": "0.6.0"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-03-26"
+  ],
+  "summary": {
+    "HAS_GAP": 1,
+    "NO_GAP": 2,
+    "NOT_APPLICABLE": 1,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "https://api.openmandate.ai/mcp -> HTTP 200\n{\"jsonrpc\": \"2.0\", \"id\": \"5c95ab7c-3498-4d47-9b2c-80b68d9c8b61\", \"result\": {\"tools\": [{\"name\": \"openmandate_create_mandate\", \"description\": \"Create a new mandate on OpenMandate. Provide what the user is looking for (want) and what they bring to the table (offer). The user's verified contacts are automatically attached.\\n\\nReturns the mandate with follow-up questions. You MUST relay these questions",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 15 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://api.openmandate.ai/mcp)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "https://api.openmandate.ai/mcp -> HTTP 200\n{\"jsonrpc\": \"2.0\", \"id\": \"f30a11da-f12c-4347-853b-d5ad03d0567c\", \"result\": {\"tools\": [{\"name\": \"openmandate_create_mandate\", \"description\": \"Create a new mandate on OpenMandate. Provide what the user is looking for (want) and what they bring to the table (offer). The user's verified contacts are automatically attached.\\n\\nReturns the mandate with follow-up questions. You MUST relay these questions",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "Server did not issue a 401/403, so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://api.openmandate.ai/.well-known/oauth-protected-resource -> HTTP 403\n{\"message\":\"Missing Authentication Token\"}",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "No metadata doc; server negotiated <2025-06-18 where 9728 is not a MUST."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "Mcp-Session-Id header present (len=36)",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "Session conveyed via header per Streamable HTTP."
+    }
+  ]
+}

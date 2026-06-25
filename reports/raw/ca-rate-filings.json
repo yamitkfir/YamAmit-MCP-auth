@@ -1,0 +1,70 @@
+{
+  "target": "https://api.serff.ai/mcp",
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "serff-filings-mcp",
+    "version": "1.0.208",
+    "build": "e262193974f1319db902955d5b4c209ac6b2dde0",
+    "tier": "free",
+    "tools_hash": "497fefc6a187c111",
+    "booted_at": "2026-06-18T08:39:40.015Z",
+    "environment": "prod",
+    "root": "https://api.serff.ai"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-06-18"
+  ],
+  "summary": {
+    "HAS_GAP": 1,
+    "NO_GAP": 2,
+    "NOT_APPLICABLE": 1,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "https://api.serff.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"9340a934-5599-4c39-aeb6-5d692fe28350\",\"result\":{\"tools\":[{\"name\":\"search_filings\",\"title\":\"Search Filings\",\"summary\":\"Search the SERFF filings corpus by company, NAIC, state, product line, year, filing type, or bureau prefix. Returns matching filings with their key metadata.\",\"description\":\"Search the SERFF filings corpus by carrier, NAIC, product line, state, year-range, fi",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 17 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://api.serff.ai/mcp)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "https://api.serff.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"7757284c-dcbe-4133-8c8c-ae9939cae924\",\"result\":{\"tools\":[{\"name\":\"search_filings\",\"title\":\"Search Filings\",\"summary\":\"Search the SERFF filings corpus by company, NAIC, state, product line, year, filing type, or bureau prefix. Returns matching filings with their key metadata.\",\"description\":\"Search the SERFF filings corpus by carrier, NAIC, product line, state, year-range, fi",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "Server did not issue a 401/403, so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "https://api.serff.ai/.well-known/oauth-protected-resource -> HTTP 200\n{\"resource\":\"https://api.serff.ai/mcp\",\"authorization_servers\":[\"https://api.llow.io\"],\"bearer_methods_supported\":[\"header\"],\"scopes_supported\":[\"mcp\"]}",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "authorization_servers present (1 entry)."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://api.serff.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"f68b48cb-ea50-49b1-8a75-1a76c2e980bd\",\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{\"listChanged\":true},\"resources\":{},\"prompts\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"serff-filings-mcp\",\"version\":\"1.0.208\",\"build\":\"e262193974f1319db902955d5b4c209ac6b2dde0\",\"tier\":\"free\",\"tools_hash\":\"497fefc6a187c111\",\"booted_at\":\"2026-06-18T08:39:40.015Z\",\"environm",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed."
+    }
+  ]
+}

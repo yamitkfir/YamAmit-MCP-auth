@@ -1,0 +1,63 @@
+{
+  "target": "https://childpsychiatry.ai/api/mcp/v1",
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "Psychiatry for Children",
+    "version": "1.0.0"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-06-18"
+  ],
+  "summary": {
+    "HAS_GAP": 2,
+    "NO_GAP": 2,
+    "NOT_APPLICABLE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "https://childpsychiatry.ai/api/mcp/v1 -> HTTP 200\nevent: message\ndata: {\"result\":{\"tools\":[{\"name\":\"search_articles\",\"title\":\"Search articles\",\"description\":\"Search Psychiatry for Children's editorial corpus by query. Returns title, slug, summary, and URL for matching articles.\",\"inputSchema\":{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"type\":\"object\",\"properties\":{\"query\":{\"description\":\"Free-text search query.\",\"type\":\"string\"},\"q\":{\"d",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 6 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://childpsychiatry.ai/api/mcp/v1)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "https://childpsychiatry.ai/api/mcp/v1 -> HTTP 200\nevent: message\ndata: {\"result\":{\"tools\":[{\"name\":\"search_articles\",\"title\":\"Search articles\",\"description\":\"Search Psychiatry for Children's editorial corpus by query. Returns title, slug, summary, and URL for matching articles.\",\"inputSchema\":{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"type\":\"object\",\"properties\":{\"query\":{\"description\":\"Free-text search query.\",\"type\":\"string\"},\"q\":{\"d",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "Server did not issue a 401/403, so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "https://childpsychiatry.ai/.well-known/oauth-protected-resource -> HTTP 200\n{\n  \"resource\": \"https://childpsychiatry.ai/api/mcp/v1\",\n  \"resource_name\": \"Psychiatry for Children \u2014 Agent API\",\n  \"resource_documentation\": \"https://childpsychiatry.ai/llms-full.txt\",\n  \"resource_policy_uri\": \"https://childpsychiatry.ai/privacy\",\n  \"resource_tos_uri\": \"https://childpsychiatry.ai/terms\",\n  \"authorization_servers\": [],\n  \"bearer_methods_supported\": [\n    \"header\"\n  ],\n  \"scopes_s",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "Metadata document present but authorization_servers missing/empty."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "Mcp-Session-Id header present (len=36)",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "Session conveyed via header per Streamable HTTP."
+    }
+  ]
+}

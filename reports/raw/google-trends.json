@@ -1,0 +1,64 @@
+{
+  "target": "https://google-trends.api.trendsmcp.ai/mcp",
+  "protocol_version": "2025-03-26",
+  "server_info": {
+    "version": "1.0.0",
+    "name": "paradox-intelligence-trends-mcp"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-03-26"
+  ],
+  "summary": {
+    "HAS_GAP": 2,
+    "NO_GAP": 1,
+    "NOT_APPLICABLE": 1,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "https://google-trends.api.trendsmcp.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"59e69786-6e82-4849-b450-7df96fadee7d\",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"No API key. Get your free key at https://trendsmcp.ai (100 requests/month, no credit card).\"}],\"isError\":true}}",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 0 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://google-trends.api.trendsmcp.ai/mcp)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "https://google-trends.api.trendsmcp.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"5cb6f536-7fa4-4b17-b4a7-8de80366b4d5\",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"No API key. Get your free key at https://trendsmcp.ai (100 requests/month, no credit card).\"}],\"isError\":true}}",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "Server did not issue a 401/403, so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "https://google-trends.api.trendsmcp.ai/.well-known/oauth-protected-resource -> HTTP 200\n{}",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "Metadata document present but authorization_servers missing/empty."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://google-trends.api.trendsmcp.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"9c45b812-dde1-48d1-8896-19e06cd278c8\",\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"tools\":{\"listChanged\":false},\"prompts\":{\"listChanged\":false},\"resources\":{\"listChanged\":false}},\"serverInfo\":{\"version\":\"1.0.0\",\"name\":\"paradox-intelligence-trends-mcp\"}}}",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed."
+    }
+  ]
+}

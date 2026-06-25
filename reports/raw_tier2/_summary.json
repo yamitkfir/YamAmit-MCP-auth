@@ -1,0 +1,701 @@
+{
+  "deepwiki": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "deepwiki-sse": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "huggingface": {
+    "predictable-session-id": "NO_GAP",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "HAS_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "linear-sse": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "linear-mcp": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "notion": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "sentry": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "atlassian-sse": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "github": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "stripe": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "cloudflare-docs": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "cloudflare-bindings": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "cloudflare-observability": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "cloudflare-radar": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "asana": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "globalping": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "grafana": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "webflow": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "wix": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "paypal": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "square": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "intercom": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "neon": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "neon-mcp": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "prisma": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "vercel": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "zapier": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "context7": {
+    "predictable-session-id": "NO_GAP",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "context7-sse": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "cloudflare-bbrowser": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "sentry-sse": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "hf-sse": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "HAS_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "fetch-mcp": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "ERROR",
+    "cors-misconfiguration": "ERROR",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "sequentialthinking": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "ERROR",
+    "cors-misconfiguration": "ERROR",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "edgeone": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "semgrep": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "h-index": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "library": {
+    "predictable-session-id": "NO_GAP",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "getperspective": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "atars-mcp": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "dock": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "stompy": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "ca-rate-filings": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "HAS_GAP"
+  },
+  "company-search": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "krtr": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "library-2": {
+    "predictable-session-id": "NO_GAP",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "mcp-mailjunky": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "crane-ledger": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "web-agent": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "hostprofit-mcp-production-up-railway-app": {
+    "_error": "TimeoutError: "
+  },
+  "just-publish": {
+    "predictable-session-id": "NO_GAP",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "directory": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "gondola": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "mcp-server": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "buron": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "mcp-server-2": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "catalog-api": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "qr-manager": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "weftly": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "docs": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "NO_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "mcp-fiber": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "scry": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "figlime": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "NO_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "quantifyme": {
+    "predictable-session-id": "NO_GAP",
+    "origin-not-validated": "NO_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "xmp4": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "shopify-admin-mcp": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "salesforce-mcp": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "hi": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "api-openmandate": {
+    "predictable-session-id": "NO_GAP",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "mcp-explorium": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "travel": {
+    "predictable-session-id": "NO_GAP",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "INCONCLUSIVE",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "document-processing": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "HAS_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "mcp-gavelin": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "NO_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "strata": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "nullary": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "lawyer-search": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "INCONCLUSIVE"
+  },
+  "bowmark": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "connect": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "anzenna": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "financial-data": {
+    "predictable-session-id": "NO_GAP",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "HAS_GAP",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "google-trends": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "mcp-server-3": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "library-3": {
+    "predictable-session-id": "NO_GAP",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "robomart": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "ERROR",
+    "cors-misconfiguration": "ERROR",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "code": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "NO_GAP",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "notes": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  },
+  "filtrix-ai": {
+    "predictable-session-id": "NOT_APPLICABLE",
+    "origin-not-validated": "INCONCLUSIVE",
+    "cors-misconfiguration": "NO_GAP",
+    "auth-endpoints-not-https": "NOT_APPLICABLE",
+    "missing-as-metadata": "INCONCLUSIVE",
+    "implicit-flow-enabled": "NOT_APPLICABLE"
+  },
+  "switch": {
+    "predictable-session-id": "NO_GAP",
+    "origin-not-validated": "HAS_GAP",
+    "cors-misconfiguration": "HAS_GAP",
+    "auth-endpoints-not-https": "NO_GAP",
+    "missing-as-metadata": "NO_GAP",
+    "implicit-flow-enabled": "NO_GAP"
+  }
+}

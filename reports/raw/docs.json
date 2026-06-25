@@ -1,0 +1,64 @@
+{
+  "target": "https://auteng.ai/mcp/docs",
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "auteng-docs",
+    "version": "1.26.0"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-06-18"
+  ],
+  "summary": {
+    "HAS_GAP": 2,
+    "NO_GAP": 1,
+    "NOT_APPLICABLE": 1,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "https://auteng.ai/mcp/docs -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"4f7a3e11-9ebf-477f-a202-2b86fc001958\",\"result\":{\"tools\":[{\"name\":\"auteng_publish_markdown\",\"description\":\"\\nPublish markdown as a publicly shareable AutEng document.\\n\\nProxies to backend endpoint:\\nPOST /api/tools/docs/publish-markdown/\\n\",\"inputSchema\":{\"properties\":{\"markdown\":{\"title\":\"Markdown\",\"type\":\"string\"},\"title\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"defau",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 7 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://auteng.ai/mcp/docs)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "https://auteng.ai/mcp/docs -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"eb27cbb8-868b-4699-9836-b8280022bb82\",\"result\":{\"tools\":[{\"name\":\"auteng_publish_markdown\",\"description\":\"\\nPublish markdown as a publicly shareable AutEng document.\\n\\nProxies to backend endpoint:\\nPOST /api/tools/docs/publish-markdown/\\n\",\"inputSchema\":{\"properties\":{\"markdown\":{\"title\":\"Markdown\",\"type\":\"string\"},\"title\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"defau",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "Server did not issue a 401/403, so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "https://auteng.ai/.well-known/oauth-protected-resource -> HTTP 403\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "No RFC 9728 metadata document."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://auteng.ai/mcp/docs -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"73a0d5f2-d64f-4c44-b81f-b43a3c71734b\",\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"experimental\":{},\"prompts\":{\"listChanged\":false},\"resources\":{\"subscribe\":false,\"listChanged\":false},\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"auteng-docs\",\"version\":\"1.26.0\"},\"instructions\":\"AutEng Docs \u2014 document workspace for AI agents.\\n\\nTools:\\n- auteng_publish_ma",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed."
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "target": "https://h-index.xr-utilities.ai/mcp",
+  "protocol_version": "2025-03-26",
+  "server_info": {
+    "name": "h-index",
+    "version": "0.2.0"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-03-26",
+    "PRM at https://h-index.xr-utilities.ai/.well-known/oauth-protected-resource -> HTTP 404 (no usable doc).",
+    "AS metadata GET https://h-index.xr-utilities.ai/.well-known/oauth-authorization-server -> HTTP 404 (not usable).",
+    "AS metadata GET https://h-index.xr-utilities.ai/.well-known/openid-configuration -> HTTP 404 (not usable).",
+    "No Authorization Server Metadata resolved (PRM or origin)."
+  ],
+  "summary": {
+    "NOT_APPLICABLE": 3,
+    "HAS_GAP": 1,
+    "NO_GAP": 1,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "predictable-session-id",
+      "name": "Predictable session identifier",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "",
+      "spec_reference": "MCP Transports \u00a7Session Management: session id SHOULD be globally unique and cryptographically secure. Security Best Practices \u00a7Session Hijacking: servers MUST use secure, non-deterministic session IDs; avoid predictable/sequential ones.",
+      "notes": "Server issues no Mcp-Session-Id header on initialize, so there is no stateful session identifier to assess (it may be stateless or legacy-SSE)."
+    },
+    {
+      "gap_id": "origin-not-validated",
+      "name": "Origin header not validated (DNS rebinding)",
+      "verdict": "HAS_GAP",
+      "severity": "high",
+      "evidence": "https://h-index.xr-utilities.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"d45ab4a0-6a50-4f0c-8ae9-dba8771b6d14\",\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"h-index\",\"version\":\"0.2.0\"}}}",
+      "spec_reference": "MCP Transports \u00a7Security Warning: servers MUST validate the Origin header on all incoming connections to prevent DNS rebinding attacks.",
+      "notes": "initialize from forged Origin 'https://evil.attacker.example' succeeded (HTTP 200 with a valid result) \u2014 the server accepts cross-origin requests it should reject."
+    },
+    {
+      "gap_id": "cors-misconfiguration",
+      "name": "CORS reflects arbitrary origin with credentials",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "no Access-Control-Allow-Origin in response to Origin https://evil.attacker.example",
+      "spec_reference": "Not in the MCP spec. General web security: reflecting an arbitrary Origin in Access-Control-Allow-Origin together with Access-Control-Allow-Credentials: true lets any website make credentialed cross-origin calls.",
+      "notes": "Server grants no cross-origin access (safe; MCP clients aren't browsers)."
+    },
+    {
+      "gap_id": "auth-endpoints-not-https",
+      "name": "OAuth endpoint not served over HTTPS",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "high",
+      "evidence": "",
+      "spec_reference": "OAuth 2.1 \u00a71.5 & MCP Authorization \u00a72.8: all OAuth protocol URLs MUST use https (loopback exempt). RFC 8414 mandates https for issuer / jwks_uri / metadata path.",
+      "notes": "No authorization-server URLs or AS-metadata endpoints were discovered, so there is nothing to check for https."
+    },
+    {
+      "gap_id": "missing-as-metadata",
+      "name": "Missing OAuth Authorization Server Metadata (RFC 8414)",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "No authorization server is advertised (no PRM authorization_servers) and the server's own origin exposes no RFC 8414 metadata (overlaps #4 missing-PRM)",
+      "spec_reference": "MCP Authorization \u00a72.3.2: clients MUST follow RFC 8414 to obtain AS metadata; authorization servers MUST provide it. Distinct from RFC 9728 PRM (#4).",
+      "notes": "No authorization server is advertised (no PRM authorization_servers) and the server's own origin exposes no RFC 8414 metadata (overlaps #4 missing-PRM); server negotiated <2025-06-18 where RFC 8414 is not a MUST."
+    },
+    {
+      "gap_id": "implicit-flow-enabled",
+      "name": "Implicit grant advertised (forbidden by OAuth 2.1)",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "high",
+      "evidence": "",
+      "spec_reference": "OAuth 2.1 \u00a71.8 removes the implicit grant; MCP \u00a72.3 mandates OAuth 2.1. RFC 8414: response_types_supported 'token' or grant_types_supported 'implicit' advertise it.",
+      "notes": "No AS metadata resolved, so advertised grant/response types are unknown (see missing-as-metadata)."
+    }
+  ]
+}

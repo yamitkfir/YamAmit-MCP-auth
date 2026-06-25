@@ -1,0 +1,63 @@
+{
+  "target": "https://mcp.justpublish.ai/",
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "Just Publish",
+    "version": "0.1.0"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-06-18"
+  ],
+  "summary": {
+    "HAS_GAP": 2,
+    "NO_GAP": 2,
+    "NOT_APPLICABLE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "https://mcp.justpublish.ai/ -> HTTP 200\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"54170e1a-6f6b-4d2a-a6d9-19c37aee29b0\",\"result\":{\"tools\":[{\"name\":\"deploy\",\"annotations\":{\"title\":\"Publish a website\",\"readOnlyHint\":false,\"destructiveHint\":false,\"openWorldHint\":true},\"description\":\"Publish a static site (HTML, CSS, JS, images) to a public URL. First call: omit site_id and edit_token \u2014 you'll get back a URL, site_id, and edit_token. Save",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 1 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://mcp.justpublish.ai/)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "https://mcp.justpublish.ai/ -> HTTP 200\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"468d3413-9ffa-4fe4-ae85-957afc078c23\",\"result\":{\"tools\":[{\"name\":\"deploy\",\"annotations\":{\"title\":\"Publish a website\",\"readOnlyHint\":false,\"destructiveHint\":false,\"openWorldHint\":true},\"description\":\"Publish a static site (HTML, CSS, JS, images) to a public URL. First call: omit site_id and edit_token \u2014 you'll get back a URL, site_id, and edit_token. Save",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "Server did not issue a 401/403, so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "https://mcp.justpublish.ai/.well-known/oauth-protected-resource -> HTTP 404\nnot found",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "No RFC 9728 metadata document."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "Mcp-Session-Id header present (len=32)",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "Session conveyed via header per Streamable HTTP."
+    }
+  ]
+}

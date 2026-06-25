@@ -1,0 +1,59 @@
+{
+  "target": "https://getperspective.ai/mcp",
+  "protocol_version": null,
+  "server_info": {},
+  "discovery": [
+    "initialize -> HTTP 401, protocolVersion=unspecified"
+  ],
+  "summary": {
+    "NO_GAP": 3,
+    "INCONCLUSIVE": 2
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "NO_GAP",
+      "severity": "critical",
+      "evidence": "https://getperspective.ai/mcp -> HTTP 401\n{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Unauthorized: Invalid or missing MCP token\"},\"id\":\"1890312d-ad0a-43f9-bffc-0bbea2fc0baf\"}",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "Server rejects unauthenticated privileged calls."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://getperspective.ai/mcp)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "WWW-Authenticate: Bearer realm=\"mcp\", error=\"invalid_token\", resource_metadata=\"https://getperspective.ai/.well-known/oauth-protected-resource/mcp\"",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://getperspective.ai/.well-known/oauth-protected-resource -> HTTP 200\n<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Files within &#47;.well-known&#47;oauth-protected-resource/</title><style>body{margin:0;padding:30px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,segoe ui,roboto,oxygen,ubuntu,cantarell,fira sans,droid sans,helvetica neue,sans-serif;-webkit-font-smoothing:antiali",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "No metadata doc; server negotiated <2025-06-18 where 9728 is not a MUST."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://getperspective.ai/mcp -> HTTP 401\n{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Unauthorized: Invalid or missing MCP token\"},\"id\":\"7074d854-5748-45fb-a044-5cb00ef56308\"}",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed."
+    }
+  ]
+}

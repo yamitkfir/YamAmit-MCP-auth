@@ -1,0 +1,71 @@
+{
+  "target": "https://radar.mcp.cloudflare.com/sse",
+  "protocol_version": null,
+  "server_info": {},
+  "discovery": [
+    "initialize -> HTTP 401, protocolVersion=unspecified",
+    "PRM at https://radar.mcp.cloudflare.com/.well-known/oauth-protected-resource: 1 authorization_servers.",
+    "AS metadata resolved at https://radar.mcp.cloudflare.com/.well-known/oauth-authorization-server (source=prm-listed)."
+  ],
+  "summary": {
+    "NOT_APPLICABLE": 1,
+    "INCONCLUSIVE": 2,
+    "NO_GAP": 3
+  },
+  "findings": [
+    {
+      "gap_id": "predictable-session-id",
+      "name": "Predictable session identifier",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "",
+      "spec_reference": "MCP Transports \u00a7Session Management: session id SHOULD be globally unique and cryptographically secure. Security Best Practices \u00a7Session Hijacking: servers MUST use secure, non-deterministic session IDs; avoid predictable/sequential ones.",
+      "notes": "Server issues no Mcp-Session-Id header on initialize, so there is no stateful session identifier to assess (it may be stateless or legacy-SSE)."
+    },
+    {
+      "gap_id": "origin-not-validated",
+      "name": "Origin header not validated (DNS rebinding)",
+      "verdict": "INCONCLUSIVE",
+      "severity": "high",
+      "evidence": "https://radar.mcp.cloudflare.com/sse -> HTTP 401\n{\"error\":\"invalid_token\",\"error_description\":\"Missing or invalid access token\"}",
+      "spec_reference": "MCP Transports \u00a7Security Warning: servers MUST validate the Origin header on all incoming connections to prevent DNS rebinding attacks.",
+      "notes": "Request was auth-gated (401) before any Origin decision was observable, so Origin validation could not be confirmed either way."
+    },
+    {
+      "gap_id": "cors-misconfiguration",
+      "name": "CORS reflects arbitrary origin with credentials",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "Access-Control-Allow-Origin: https://evil.attacker.example; Allow-Credentials: False",
+      "spec_reference": "Not in the MCP spec. General web security: reflecting an arbitrary Origin in Access-Control-Allow-Origin together with Access-Control-Allow-Credentials: true lets any website make credentialed cross-origin calls.",
+      "notes": "Reflects an arbitrary Origin but without Allow-Credentials \u2014 lower risk (no cookies/credentials shared). Worth noting, not a clear finding."
+    },
+    {
+      "gap_id": "auth-endpoints-not-https",
+      "name": "OAuth endpoint not served over HTTPS",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "https://radar.mcp.cloudflare.com; issuer=https://radar.mcp.cloudflare.com; authorization_endpoint=https://radar.mcp.cloudflare.com/oauth/authorize; token_endpoint=https://radar.mcp.cloudflare.com/token; registration_endpoint=https://radar.mcp.cloudflare.com/register; revocation_endpoint=https://radar.mcp.cloudflare.com/token",
+      "spec_reference": "OAuth 2.1 \u00a71.5 & MCP Authorization \u00a72.8: all OAuth protocol URLs MUST use https (loopback exempt). RFC 8414 mandates https for issuer / jwks_uri / metadata path.",
+      "notes": "All 6 discovered OAuth URL(s) use https or loopback."
+    },
+    {
+      "gap_id": "missing-as-metadata",
+      "name": "Missing OAuth Authorization Server Metadata (RFC 8414)",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "AS metadata at https://radar.mcp.cloudflare.com/.well-known/oauth-authorization-server (source=prm-listed)",
+      "spec_reference": "MCP Authorization \u00a72.3.2: clients MUST follow RFC 8414 to obtain AS metadata; authorization servers MUST provide it. Distinct from RFC 9728 PRM (#4).",
+      "notes": "RFC 8414 Authorization Server Metadata resolved successfully."
+    },
+    {
+      "gap_id": "implicit-flow-enabled",
+      "name": "Implicit grant advertised (forbidden by OAuth 2.1)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "response_types_supported=['code']",
+      "spec_reference": "OAuth 2.1 \u00a71.8 removes the implicit grant; MCP \u00a72.3 mandates OAuth 2.1. RFC 8414: response_types_supported 'token' or grant_types_supported 'implicit' advertise it.",
+      "notes": "response_types_supported has no 'token' and no 'implicit' grant advertised \u2014 implicit grant not usable."
+    }
+  ]
+}

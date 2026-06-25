@@ -1,0 +1,65 @@
+{
+  "target": "https://trydock.ai/api/mcp",
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "dock",
+    "version": "1.0.0",
+    "title": "Dock: shared workspaces for agents"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-06-18"
+  ],
+  "summary": {
+    "HAS_GAP": 1,
+    "NO_GAP": 2,
+    "NOT_APPLICABLE": 1,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "https://trydock.ai/api/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"fe0f333c-ed9b-49d1-a2c3-46940784540f\",\"result\":{\"tools\":[{\"name\":\"list_workspaces\",\"description\":\"List all workspaces the authenticated principal has access to. Returns workspace name (slug), mode (the default-view preference for the first tab), and creation date. A workspace is a container of one or more surfaces (tabs); each surface is either a `table` (rows + columns) or ",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 64 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://trydock.ai/api/mcp)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "https://trydock.ai/api/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"3531ef79-6829-415e-9e0e-ad5f1d02a9aa\",\"result\":{\"tools\":[{\"name\":\"list_workspaces\",\"description\":\"List all workspaces the authenticated principal has access to. Returns workspace name (slug), mode (the default-view preference for the first tab), and creation date. A workspace is a container of one or more surfaces (tabs); each surface is either a `table` (rows + columns) or ",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "Server did not issue a 401/403, so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "https://trydock.ai/.well-known/oauth-protected-resource -> HTTP 200\n{\"resource\":\"https://trydock.ai/api/mcp\",\"authorization_servers\":[\"https://trydock.ai\"],\"bearer_methods_supported\":[\"header\"],\"scopes_supported\":[\"mcp\"],\"resource_documentation\":\"https://trydock.ai/docs/mcp/overview\"}",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "authorization_servers present (1 entry)."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://trydock.ai/api/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"53417ee8-c889-4684-aae2-41b7db595759\",\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"dock\",\"version\":\"1.0.0\",\"title\":\"Dock: shared workspaces for agents\"},\"instructions\":\"You are connected to Dock, a shared cloud workspace for humans and AI agents.\\n\\n# Mental model\\n\\nA workspace is a container of one or more su",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed."
+    }
+  ]
+}

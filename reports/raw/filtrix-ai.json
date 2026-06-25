@@ -1,0 +1,59 @@
+{
+  "target": "https://mcp.filtrix.ai/",
+  "protocol_version": null,
+  "server_info": {},
+  "discovery": [
+    "initialize -> HTTP 401, protocolVersion=unspecified"
+  ],
+  "summary": {
+    "NO_GAP": 2,
+    "INCONCLUSIVE": 3
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "NO_GAP",
+      "severity": "critical",
+      "evidence": "https://mcp.filtrix.ai/ -> HTTP 401\n{\"error\":\"Missing Authorization Bearer token\"}",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "Server rejects unauthenticated privileged calls."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://mcp.filtrix.ai/)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "WWW-Authenticate: ''",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "401 lacks pointer, but server negotiated <2025-06-18 where it is not a MUST."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://mcp.filtrix.ai/.well-known/oauth-protected-resource -> HTTP 404\nNot found",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "No metadata doc; server negotiated <2025-06-18 where 9728 is not a MUST."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://mcp.filtrix.ai/ -> HTTP 401\n{\"error\":\"Missing Authorization Bearer token\"}",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed."
+    }
+  ]
+}

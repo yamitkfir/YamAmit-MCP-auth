@@ -1,0 +1,82 @@
+{
+  "target": "https://mcp.switchapp.ai/mcp",
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "switch",
+    "title": "Switch \u2014 AI image studio",
+    "version": "0.1.0",
+    "description": "Switch creative studio \u2014 generate, manage, and explore your AI image and video library through Claude.",
+    "icons": [
+      {
+        "src": "https://www.switchapp.ai/switch-cat-icon-120.png",
+        "mimeType": "image/png",
+        "sizes": [
+          "120x120"
+        ]
+      },
+      {
+        "src": "https://www.switchapp.ai/switch-cat-icon-180.png",
+        "mimeType": "image/png",
+        "sizes": [
+          "180x180"
+        ]
+      }
+    ],
+    "websiteUrl": "https://www.switchapp.ai"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-06-18"
+  ],
+  "summary": {
+    "HAS_GAP": 1,
+    "NO_GAP": 3,
+    "NOT_APPLICABLE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "https://mcp.switchapp.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"edba4d3d-a305-4423-a335-4d3a180d5d37\",\"result\":{\"tools\":[{\"name\":\"explore_models\",\"title\":\"Explore Models\",\"description\":\"Browse the image-generation models available to your Switch account. Returns model id, display name, brand, and credits-per-image so you can pick one before calling generate_image.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}},\"annotations\":{\"readOnlyH",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 32 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://mcp.switchapp.ai/mcp)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "https://mcp.switchapp.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"350d4f74-a5d2-4d08-81b0-d0a284410a1a\",\"result\":{\"tools\":[{\"name\":\"explore_models\",\"title\":\"Explore Models\",\"description\":\"Browse the image-generation models available to your Switch account. Returns model id, display name, brand, and credits-per-image so you can pick one before calling generate_image.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}},\"annotations\":{\"readOnlyH",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "Server did not issue a 401/403, so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "https://mcp.switchapp.ai/.well-known/oauth-protected-resource -> HTTP 200\n{\"resource\":\"https://mcp.switchapp.ai/mcp\",\"authorization_servers\":[\"https://mcp.switchapp.ai\"],\"scopes_supported\":[\"mcp:read\"],\"bearer_methods_supported\":[\"header\"],\"resource_documentation\":\"https://mcp.switchapp.ai/mcp\",\"logo_uri\":\"https://mcp.switchapp.ai/switch-cat-icon-120.png\"}",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "authorization_servers present (1 entry)."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "Mcp-Session-Id header present (len=43)",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "Session conveyed via header per Streamable HTTP."
+    }
+  ]
+}

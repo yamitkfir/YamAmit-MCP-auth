@@ -1,0 +1,46 @@
+[
+  {
+    "gap_id": "open-dcr",
+    "name": "dock",
+    "verdict": "HAS_GAP",
+    "severity": "high",
+    "evidence": "POST https://trydock.ai/oauth/register -> HTTP 201, client_id='dock_client_147f8c0e34e94b2c19c2e730c6d5aeec'",
+    "spec_reference": "RFC 7591 \u00a73: open registration is permitted (SHOULD), but an unauthenticated registration endpoint is the prerequisite for the confused-deputy attack (#16) and for registration flooding. Cleanup uses RFC 7592 \u00a72.3 (DELETE -> 204).",
+    "notes": "Registration succeeded with no initial access token \u2014 anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. \u26a0 MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='dock_client_147f8c0e34e94b2c19c2e730c6d5aeec') cannot be deleted programmatically \u2014 deprovision it manually if the server is not yours.",
+    "url": "https://trydock.ai/api/mcp",
+    "cleanup_failed": true
+  },
+  {
+    "gap_id": "open-dcr",
+    "name": "ca-rate-filings",
+    "verdict": "HAS_GAP",
+    "severity": "high",
+    "evidence": "POST https://api.llow.io/ai/mcp/oauth/register -> HTTP 200, client_id='4b4e081b-bcea-43c0-8cec-4af0a5160695'",
+    "spec_reference": "RFC 7591 \u00a73: open registration is permitted (SHOULD), but an unauthenticated registration endpoint is the prerequisite for the confused-deputy attack (#16) and for registration flooding. Cleanup uses RFC 7592 \u00a72.3 (DELETE -> 204).",
+    "notes": "Registration succeeded with no initial access token \u2014 anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. \u26a0 MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='4b4e081b-bcea-43c0-8cec-4af0a5160695') cannot be deleted programmatically \u2014 deprovision it manually if the server is not yours.",
+    "url": "https://api.serff.ai/mcp",
+    "cleanup_failed": true
+  },
+  {
+    "gap_id": "open-dcr",
+    "name": "gondola",
+    "verdict": "HAS_GAP",
+    "severity": "high",
+    "evidence": "POST https://www.gondola.ai/api/oauth/register -> HTTP 201, client_id='gond_mcp_do7tStvN3QTKtjJfHzBEVhtUCsg8YWsV'",
+    "spec_reference": "RFC 7591 \u00a73: open registration is permitted (SHOULD), but an unauthenticated registration endpoint is the prerequisite for the confused-deputy attack (#16) and for registration flooding. Cleanup uses RFC 7592 \u00a72.3 (DELETE -> 204).",
+    "notes": "Registration succeeded with no initial access token \u2014 anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. \u26a0 MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='gond_mcp_do7tStvN3QTKtjJfHzBEVhtUCsg8YWsV') cannot be deleted programmatically \u2014 deprovision it manually if the server is not yours.",
+    "url": "https://mcp.gondola.ai/mcp",
+    "cleanup_failed": true
+  },
+  {
+    "gap_id": "open-dcr",
+    "name": "switch",
+    "verdict": "HAS_GAP",
+    "severity": "high",
+    "evidence": "POST https://mcp.switchapp.ai/api/oauth/register -> HTTP 201, client_id='mcpc_NI68KEmQ_i6x49tvj3J_cA'",
+    "spec_reference": "RFC 7591 \u00a73: open registration is permitted (SHOULD), but an unauthenticated registration endpoint is the prerequisite for the confused-deputy attack (#16) and for registration flooding. Cleanup uses RFC 7592 \u00a72.3 (DELETE -> 204).",
+    "notes": "Registration succeeded with no initial access token \u2014 anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. \u26a0 MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='mcpc_NI68KEmQ_i6x49tvj3J_cA') cannot be deleted programmatically \u2014 deprovision it manually if the server is not yours.",
+    "url": "https://mcp.switchapp.ai/mcp",
+    "cleanup_failed": true
+  }
+]

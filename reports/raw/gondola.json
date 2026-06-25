@@ -1,0 +1,64 @@
+{
+  "target": "https://mcp.gondola.ai/mcp",
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "gondola",
+    "version": "1.12.4"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-06-18"
+  ],
+  "summary": {
+    "HAS_GAP": 1,
+    "NO_GAP": 2,
+    "NOT_APPLICABLE": 1,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "https://mcp.gondola.ai/mcp -> HTTP 200\nevent: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"104db382-16c4-4437-a228-de00268646fc\",\"result\":{\"tools\":[{\"name\":\"search_hotels\",\"description\":\"Search for hotels by location and dates with cash AND points pricing.\\n\\n    Returns hotels with side-by-side cash vs points rates, cents-per-point (CPP) valuation,\\n    and deal scores so you can recommend the best value. This is Gondola's unique advantage \u2014",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 31 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://mcp.gondola.ai/mcp)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "https://mcp.gondola.ai/mcp -> HTTP 200\nevent: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"1f1b7c59-45ec-449e-adcc-39486d741964\",\"result\":{\"tools\":[{\"name\":\"search_hotels\",\"description\":\"Search for hotels by location and dates with cash AND points pricing.\\n\\n    Returns hotels with side-by-side cash vs points rates, cents-per-point (CPP) valuation,\\n    and deal scores so you can recommend the best value. This is Gondola's unique advantage \u2014",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "Server did not issue a 401/403, so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "https://mcp.gondola.ai/.well-known/oauth-protected-resource -> HTTP 200\n{\"resource\":\"https://mcp.gondola.ai\",\"authorization_servers\":[\"https://www.gondola.ai\"],\"scopes_supported\":[\"mcp:read\",\"mcp:book\"],\"bearer_methods_supported\":[\"header\"]}",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "authorization_servers present (1 entry)."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://mcp.gondola.ai/mcp -> HTTP 200\nevent: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"91ce3574-358f-4c79-97e2-47463ccc57f8\",\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"experimental\":{},\"prompts\":{\"listChanged\":false},\"resources\":{\"subscribe\":false,\"listChanged\":false},\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"gondola\",\"version\":\"1.12.4\"}}}\r\n\r\n",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed."
+    }
+  ]
+}

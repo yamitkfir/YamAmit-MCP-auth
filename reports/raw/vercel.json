@@ -1,0 +1,59 @@
+{
+  "target": "https://mcp.vercel.com",
+  "protocol_version": null,
+  "server_info": {},
+  "discovery": [
+    "initialize -> HTTP 401, protocolVersion=unspecified"
+  ],
+  "summary": {
+    "NO_GAP": 4,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "NO_GAP",
+      "severity": "critical",
+      "evidence": "https://mcp.vercel.com -> HTTP 401\n{\"error\":\"invalid_token\",\"error_description\":\"No authorization provided\"}",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "Server rejects unauthenticated privileged calls."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://mcp.vercel.com)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "WWW-Authenticate: Bearer error=\"invalid_token\", error_description=\"No authorization provided\", resource_metadata=\"https://mcp.vercel.com/.well-known/oauth-protected-resource\"",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "https://mcp.vercel.com/.well-known/oauth-protected-resource -> HTTP 200\n{\"resource\":\"https://mcp.vercel.com/\",\"authorization_servers\":[\"https://mcp.vercel.com\"],\"scopes_supported\":[\"openid\",\"offline_access\"],\"resource_name\":\"Vercel MCP\",\"resource_documentation\":\"https://vercel.com/docs/mcp/vercel-mcp\",\"organization_name\":\"Vercel\",\"organization_uri\":\"https://vercel.com\",\"description\":\"Vercel's official MCP server \u2014 Vercel platform tools, deployment management, and docu",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "authorization_servers present (1 entry)."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://mcp.vercel.com -> HTTP 401\n{\"error\":\"invalid_token\",\"error_description\":\"No authorization provided\"}",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed."
+    }
+  ]
+}

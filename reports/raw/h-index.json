@@ -1,0 +1,64 @@
+{
+  "target": "https://h-index.xr-utilities.ai/mcp",
+  "protocol_version": "2025-03-26",
+  "server_info": {
+    "name": "h-index",
+    "version": "0.2.0"
+  },
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-03-26"
+  ],
+  "summary": {
+    "HAS_GAP": 1,
+    "NO_GAP": 1,
+    "NOT_APPLICABLE": 1,
+    "INCONCLUSIVE": 2
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "https://h-index.xr-utilities.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"0a6a4ed4-a8f9-4e81-85d7-1ccb8729a59c\",\"result\":{\"tools\":[{\"name\":\"search_registry\",\"description\":\"Search the H-Index registry of MCP servers, AI agent APIs, and tool endpoints. Returns listings ranked by semantic similarity to the query.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\",\"description\":\"Natural-language query matched against apiName + desc",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 3 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "endpoint scheme = https (https://h-index.xr-utilities.ai/mcp)",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": ""
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "https://h-index.xr-utilities.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"157e443f-e49a-41f2-8dfe-21f6c3ac8817\",\"result\":{\"tools\":[{\"name\":\"search_registry\",\"description\":\"Search the H-Index registry of MCP servers, AI agent APIs, and tool endpoints. Returns listings ranked by semantic similarity to the query.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\",\"description\":\"Natural-language query matched against apiName + desc",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "Server did not issue a 401/403, so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://h-index.xr-utilities.ai/.well-known/oauth-protected-resource -> HTTP 404\n{\"error\":\"not found\"}",
+      "spec_reference": "MCP Authorization 2025-06-18: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers.",
+      "notes": "No metadata doc; server negotiated <2025-06-18 where 9728 is not a MUST."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "https://h-index.xr-utilities.ai/mcp -> HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"fda5c7a0-8b3e-4e61-85de-ad2d6a018033\",\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"h-index\",\"version\":\"0.2.0\"}}}",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed."
+    }
+  ]
+}
