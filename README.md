@@ -131,7 +131,7 @@ YamAmit-MCP-auth/
   mcpauth/
     models.py            # Verdict, Finding, ProbeContext, TargetSpec, version gate
     netguard.py          # destination classification: loopback/private/same-site (SSRF guard)
-    probe.py             # HTTP/JSON-RPC client — capped reads, SSE framing, evidence capture
+    probe.py             # HTTP/JSON-RPC client — full-body reads, SSE framing, evidence
     oauth.py             # PRM -> AS-metadata discovery (RFC 9728/8414), fetched once
     runner.py            # handshake, discovery, concurrent detectors, report aggregation
     detectors/
@@ -343,12 +343,13 @@ The current MCP revision is **`2026-07-28`**; `2025-11-25` also exists. The tool
 - No `429` / rate-limit handling. All detectors fire as one uncapped burst (~15 requests); a throttling target's `429`s flow into "header absent" branches and become confident `NO_GAP`/`NOT_APPLICABLE`. Needs a per-target request budget and 429 awareness.
 - Only the first authorization server that answers is examined. The rest are listed in the report as unresolved, but they are not checked.
 - `jsonrpc_result` doesn't correlate the JSON-RPC `id`, so on a shared SSE stream it can return another request's result.
-- **The SSE byte cap does not do what it was meant to.** `probe.py` reads bodies with `StreamReader.read(cap)`, which waits for `cap` bytes or end-of-body — so against a server that sends one small event and holds the stream open (what every real server does) the read still burns the whole timeout and returns a transport error, discarding the bytes that
-  already held the answer. `readany()` is what the intent needs. Untested and unfixed because no sandbox holds a stream open — the blind spot below is what hides it.
+- The SSE read now keeps what arrived when a held-open stream goes quiet (`_read_body`'s
+  `stop_when_stalled`), but that path has **no live coverage** — see the sandbox blind spot
+  below. It is exercised only against bodies that end.
 
 **Test/sandbox blind spots** — each conceals a real defect class:
 
-- No sandbox holds an SSE stream open; every real server does.
+- No sandbox holds an SSE stream open; every real server does. So the stall handling in `_read_body` is only unit-tested, never driven by a stream that stays connected.
 - No sandbox negotiates a revision *newer* than 2025-06-18.
 - `hardened_server`'s PRM sits only at the bare origin with a `resource` value that doesn't match itself, and its `resource_metadata` pointer is an unreachable port-less URL — so the `NO_GAP` anchors for #3/#4 are not themselves compliant.
 - `hardened_oauth_server`, the Tier-2 "hardened" anchor, leaves its **MCP endpoint wide open** — `/mcp` answers `initialize` and `tools/list` with no `Authorization` check, so gap #1 would call it critical. Only `/register` is protected (401 without an initial access token). It anchors `NO_GAP` for the six Tier-2 gaps while failing Tier 1, which is never exercised because the Tier-2 tests only run tier 2 against it.
