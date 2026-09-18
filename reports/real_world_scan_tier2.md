@@ -5,8 +5,11 @@ Run 2026-06-20. Detectors: the 6 **read-only** Tier-2 checks. `open-dcr` (#12) w
 against third-party servers without explicit approval. Command per endpoint:
 
 ```
-uv run mcpauth scan <url> --tier 2 --safe        # --safe drops write detectors
+uv run mcpauth scan <url> --tier 2 --safe        # as run at the time
 ```
+
+> `--safe` no longer exists. Writes are now off by default and opt-in via `--unsafe-writes`,
+> so the equivalent command today is just `uv run mcpauth scan <url> --tier 2`.
 
 Raw JSON in `reports/raw_tier2/`; machine summary in `reports/raw_tier2/_summary.json`.
 87 of 88 reachable (1 transport error).
