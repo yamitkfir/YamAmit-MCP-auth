@@ -13,12 +13,17 @@
 #   bash reports/run_scans.sh                 # all tiers, read-only, into reports/raw-<date>/
 #   bash reports/run_scans.sh --tier 1        # Tier-1 only
 #   OUT=reports/raw bash reports/run_scans.sh # explicit output dir (will refuse if non-empty)
+#   EP=my_hosts.txt bash reports/run_scans.sh # scan a different endpoint list
 
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
-EP="reports/endpoints.txt"
+EP="${EP:-reports/endpoints.txt}"
 OUT="${OUT:-reports/raw-$(date +%Y%m%d-%H%M%S)}"
+# Expanded below as ${EXTRA[@]+"${EXTRA[@]}"}, not "${EXTRA[@]}". macOS ships bash 3.2,
+# where expanding an EMPTY array under `set -u` is a fatal "unbound variable" — so running
+# this script with no arguments, which is the documented default, aborted on the first
+# endpoint. The `+` form expands to nothing when the array is empty.
 EXTRA=("$@")
 
 if [[ ! -f "$EP" ]]; then
@@ -45,7 +50,7 @@ while IFS='|' read -r name url; do
   out="$OUT/$name.json"
   err="$OUT/$name.err"
 
-  uv run mcpauth scan "$url" --json "${EXTRA[@]}" >"$out" 2>"$err"
+  uv run mcpauth scan "$url" --json ${EXTRA[@]+"${EXTRA[@]}"} >"$out" 2>"$err"
   rc=$?
 
   # Exit codes: 0 clean, 1 gap found, 2 scan failed/unreachable, 3 usage error.
@@ -53,7 +58,7 @@ while IFS='|' read -r name url; do
   if [[ $rc -eq 2 ]]; then
     echo "  retry $name (scan failed)"
     sleep 2
-    uv run mcpauth scan "$url" --json "${EXTRA[@]}" >"$out" 2>"$err"
+    uv run mcpauth scan "$url" --json ${EXTRA[@]+"${EXTRA[@]}"} >"$out" 2>"$err"
     rc=$?
   fi
 

@@ -14,6 +14,8 @@ not express them:
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import socket
 import subprocess
 import sys
@@ -462,3 +464,134 @@ def test_stdio_scan_exits_clean_not_failed():
     assert _exit_code(report) == EXIT_CLEAN
     # An unreachable HTTP target is still a failure.
     assert _exit_code({"reachable": False, "summary": {"INCONCLUSIVE": 3}}) != EXIT_CLEAN
+
+
+def test_run_scans_works_with_no_arguments(tmp_path):
+    """The documented default `bash reports/run_scans.sh` must actually run.
+
+    macOS ships bash 3.2, where expanding an EMPTY array as "${arr[@]}" under `set -u` is a
+    fatal "unbound variable". The script collected extra CLI args into an array and expanded
+    it that way, so invoking it with no arguments — the primary documented usage — aborted on
+    the first endpoint and scanned nothing.
+    """
+    port = _free_port()
+    proc = _boot("stateful_open_server.py", port)
+    try:
+        endpoints = tmp_path / "endpoints.txt"
+        endpoints.write_text(f"local | http://127.0.0.1:{port}/mcp\n")
+        out = tmp_path / "raw"
+        env = {
+            **os.environ,
+            "EP": str(endpoints),
+            "OUT": str(out),
+        }
+        run = subprocess.run(
+            ["bash", str(ROOT / "reports" / "run_scans.sh")],
+            cwd=ROOT, env=env, capture_output=True, text=True, timeout=180,
+        )
+        combined = run.stdout + run.stderr
+        assert "unbound variable" not in combined, combined
+        report = out / "local.json"
+        assert report.exists(), f"no report written.\n{combined}"
+        data = json.loads(report.read_text())
+        assert data["findings"], combined
+        # Read-only by default: the write detector must not have run.
+        assert "open-dcr" not in data["detectors_run"]
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
+
+
+def test_oversized_tool_list_still_reports_wide_open():
+    """A tools/list bigger than the read cap must not downgrade a critical finding.
+
+    One scanned server answered `tools/list` with 91,703 bytes. The 64 KB cap clipped it
+    mid-JSON, so the body would not parse, so `jsonrpc_result` returned None and the detector
+    reported "Unexpected status 200; could not confirm tool access" — for a server that had
+    just listed 64 tools to an unauthenticated caller. Thirteen endpoints were affected.
+    """
+    from mcpauth.detectors.tier1 import NoAuthenticationRemote
+    from mcpauth.models import ProbeContext, TargetSpec
+    from mcpauth.probe import HttpResult, truncated_success
+
+    # A real result, clipped mid-array exactly as the cap would clip it.
+    clipped = '{"jsonrpc":"2.0","id":"x","result":{"tools":[{"name":"a","description":"' + "y" * 200
+
+    class Oversized:
+        async def mcp_call(self, url, method, params=None, **kw):
+            return HttpResult(
+                ok=True, status=200, headers={"content-type": "application/json"},
+                text=clipped, json=None, truncated=True,
+                url=url, method="POST", rpc_method=method, request_headers={},
+            )
+
+        def initialize_params(self):
+            return {}
+
+    assert truncated_success(
+        HttpResult(ok=True, status=200, text=clipped, json=None, truncated=True)
+    ) is True
+
+    ctx = ProbeContext(target=TargetSpec(url="https://x.example/mcp"), probe=Oversized())
+    f = asyncio.run(NoAuthenticationRemote().detect(ctx))
+    assert f.verdict is Verdict.HAS_GAP, f.notes
+
+
+def test_truncated_error_response_is_not_read_as_success():
+    """The salvage must stay conservative: a clipped JSON-RPC *error* is not a result."""
+    from mcpauth.probe import HttpResult, truncated_success
+
+    err = '{"jsonrpc":"2.0","id":"x","error":{"code":-32000,"message":"' + "z" * 200
+    assert truncated_success(
+        HttpResult(ok=True, status=200, text=err, json=None, truncated=True)
+    ) is False
+    # Not truncated at all -> nothing to salvage.
+    assert truncated_success(
+        HttpResult(ok=True, status=200, text='{"result":{}}', json=None, truncated=False)
+    ) is False
+
+
+def test_large_body_is_read_in_full():
+    """`StreamReader.read(n)` returns *up to* n bytes, so one call clips a big body.
+
+    The probe used a single `read(cap)` and set `truncated = len(raw) >= cap`. For any
+    response larger than one buffered chunk that returned a fragment with truncated=False —
+    data loss that presented itself as complete data. A 91,703-byte tools/list arrived as
+    8,183 bytes of unparseable JSON, and the server that sent it was graded "could not tell"
+    instead of wide open.
+    """
+    from mcpauth.probe import _read_body
+
+    class FakeContent:
+        """Mimics aiohttp: read(n) yields at most one chunk, then b'' at EOF."""
+
+        def __init__(self, chunks):
+            self._chunks = list(chunks)
+
+        async def read(self, n):
+            if not self._chunks:
+                return b""
+            head = self._chunks[0]
+            if len(head) <= n:
+                return self._chunks.pop(0)
+            self._chunks[0] = head[n:]
+            return head[:n]
+
+    class FakeResp:
+        def __init__(self, chunks):
+            self.content = FakeContent(chunks)
+
+    body = b'{"result":{"tools":[' + b'{"name":"x"},' * 5000 + b'{"name":"y"}]}}'
+    chunks = [body[i:i + 8183] for i in range(0, len(body), 8183)]
+    assert len(chunks) > 1, "test needs a multi-chunk body"
+
+    raw, truncated = asyncio.run(_read_body(FakeResp(chunks), 1_000_000,
+                                            stop_when_stalled=False))
+    assert raw == body, f"read {len(raw)} of {len(body)} bytes"
+    assert truncated is False
+    assert json.loads(raw)["result"]["tools"]
+
+    # And the cap is still honoured, and reported.
+    raw, truncated = asyncio.run(_read_body(FakeResp(chunks), 100,
+                                            stop_when_stalled=False))
+    assert len(raw) == 100 and truncated is True

@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 from ..models import ProbeContext, Severity, Verdict
 from ..netguard import is_loopback_host as _is_loopback_host
 from ..netguard import same_site as _same_site
-from ..probe import Probe, jsonrpc_result
+from ..probe import Probe, jsonrpc_result, truncated_success
 from .base import Detector, is_auth_challenge
 
 # Endpoint fields in RFC 8414 AS metadata that name a URL we can check / use.
@@ -333,7 +333,9 @@ class OriginNotValidated(Detector):
         if not res.ok:
             return self.finding(Verdict.ERROR, evidence=res.evidence())
 
-        if res.status == 200 and jsonrpc_result(res) is not None:
+        if res.status == 200 and (
+            jsonrpc_result(res) is not None or truncated_success(res)
+        ):
             return self.finding(
                 Verdict.HAS_GAP,
                 evidence=res.evidence(),

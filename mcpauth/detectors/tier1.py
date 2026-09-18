@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 from ..models import ProbeContext, Severity, Verdict
 from ..oauth import prm_candidates
-from ..probe import Probe, _is_tls_failure, jsonrpc_error, jsonrpc_result
+from ..probe import Probe, _is_tls_failure, jsonrpc_error, jsonrpc_result, truncated_success
 from .base import Detector, is_auth_challenge
 
 __all__ = [
@@ -59,6 +59,22 @@ class NoAuthenticationRemote(Detector):
                 Verdict.HAS_GAP,
                 evidence=res.evidence(),
                 notes=f"tools/list returned {len(tools)} tool(s) without any credential.",
+            )
+
+        if res.status == 200 and truncated_success(res):
+            # The reply was longer than the read cap, so it does not parse — but the visible
+            # prefix already carries a JSON-RPC `result`, which means the privileged call
+            # succeeded without a credential. Concluding "could not tell" here downgraded
+            # real findings on exactly the servers that expose the most tools.
+            return self.finding(
+                Verdict.HAS_GAP,
+                evidence=res.evidence(),
+                notes=(
+                    "tools/list returned a result without any credential. The response "
+                    "exceeded the read cap so it could not be parsed in full, and the tool "
+                    "count is therefore not reported — but the server answered the "
+                    "privileged call."
+                ),
             )
 
         challenged, why = is_auth_challenge(res)

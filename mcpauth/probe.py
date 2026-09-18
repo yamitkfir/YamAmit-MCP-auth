@@ -11,6 +11,7 @@ encoding any gap-specific logic.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import uuid
@@ -127,7 +128,12 @@ class Probe:
         timeout: float = 12.0,
         *,
         insecure_tls: bool = False,
-        max_body_bytes: int = 64_000,
+        # A real tools/list is routinely larger than the old 64 KB cap — one scanned server
+        # answered with 91,703 bytes. 1 MB still bounds memory per request, and
+        # `truncated_success` salvages a verdict from anything that exceeds even this.
+        # (The cap was not the whole story: see `_read_body` for why the old single
+        # `read(cap)` clipped bodies far below it while reporting them complete.)
+        max_body_bytes: int = 1_000_000,
     ):
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session: aiohttp.ClientSession | None = None
@@ -215,8 +221,9 @@ class Probe:
                 method, url, headers=hdrs, json=json_body,
                 allow_redirects=allow_redirects,
             ) as resp:
-                raw = await resp.content.read(cap)
-                truncated = len(raw) >= cap
+                raw, truncated = await _read_body(
+                    resp, cap, stop_when_stalled=read_bytes is not None
+                )
                 # A non-UTF-8 body is still a successful exchange; don't call it a
                 # transport error just because we cannot decode every byte.
                 text = raw.decode("utf-8", errors="replace")
@@ -284,6 +291,47 @@ class Probe:
         return await self.request(
             "POST", url, headers=h, json_body=body, rpc_method=method,
         )
+
+
+_READ_CHUNK = 64 * 1024
+# How long to wait for *more* bytes on a body that has already given us some. Only applies
+# to reads the caller capped explicitly, i.e. the SSE probe.
+_STALL_SECONDS = 2.0
+
+
+async def _read_body(resp, cap: int, *, stop_when_stalled: bool) -> tuple[bytes, bool]:
+    """Read up to `cap` bytes of a response body. Returns (bytes, hit_the_cap).
+
+    Loops, because `StreamReader.read(n)` returns *up to* n bytes — whatever happens to be
+    buffered — not n bytes. A single `read(cap)` therefore returned only the first chunk of
+    any larger response while reporting `truncated=False`: a 91,703-byte `tools/list` came
+    back as 8,183 bytes of clipped JSON that would not parse, so a server which had just
+    listed its tools to an unauthenticated caller was graded "could not tell" instead of
+    critical. This looked like complete data, which is what made it dangerous.
+
+    `stop_when_stalled` is for Server-Sent Events. An SSE stream stays open by design, so
+    there is no end-of-body to read towards; once it has given us something and then goes
+    quiet, we keep what arrived instead of blocking until the request timeout and discarding
+    all of it.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while total < cap:
+        want = min(_READ_CHUNK, cap - total)
+        try:
+            if stop_when_stalled and chunks:
+                chunk = await asyncio.wait_for(
+                    resp.content.read(want), timeout=_STALL_SECONDS
+                )
+            else:
+                chunk = await resp.content.read(want)
+        except asyncio.TimeoutError:
+            break          # stream is idle; keep what we have
+        if not chunk:
+            break          # end of body
+        chunks.append(chunk)
+        total += len(chunk)
+    return b"".join(chunks), total >= cap
 
 
 _TLS_ERROR_MARKERS = (
@@ -396,6 +444,31 @@ def jsonrpc_result(result: HttpResult) -> Any:
             if isinstance(ev, dict) and "result" in ev and "error" not in ev:
                 return ev["result"]
     return None
+
+
+_RESULT_KEY = re.compile(r'"result"\s*:')
+_ERROR_KEY = re.compile(r'"error"\s*:')
+
+
+def truncated_success(res: HttpResult) -> bool:
+    """True if the body was cut off at the read cap but already shows a JSON-RPC `result`.
+
+    A clipped body fails `json.loads`, so `jsonrpc_result` returns None and a detector that
+    only checks for a parsed result concludes "could not tell". For a big enough response
+    that silently downgraded a proven finding: the server *did* answer the privileged call,
+    the reply was simply longer than we chose to read.
+
+    Deliberately conservative — it requires the visible prefix to contain `"result":` with no
+    earlier `"error":`, so a JSON-RPC error response is never mistaken for success.
+    """
+    if res.json is not None or not res.truncated:
+        return False
+    text = res.text or ""
+    hit = _RESULT_KEY.search(text)
+    if not hit:
+        return False
+    err = _ERROR_KEY.search(text)
+    return err is None or err.start() > hit.start()
 
 
 def jsonrpc_error(result: HttpResult) -> Any:
