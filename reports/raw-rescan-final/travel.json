@@ -1,0 +1,174 @@
+{
+  "report_version": 2,
+  "target": "https://mcp.autonomad.ai/mcp",
+  "reachable": true,
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "autonomad-travel",
+    "version": "1.4.0",
+    "title": "Autonomad Travel",
+    "description": "AI travel agent for Claude \u2014 search live flights (Duffel), hotels (LiteAPI + direct), Viator activities, and Ticketmaster/SeatGeek events, then complete the booking on autonomad.ai. Signing up is free.",
+    "websiteUrl": "https://www.autonomad.ai",
+    "icons": [
+      {
+        "src": "https://www.autonomad.ai/icon-192.png",
+        "sizes": [
+          "192x192"
+        ],
+        "mimeType": "image/png"
+      },
+      {
+        "src": "https://www.autonomad.ai/icon-512.png",
+        "sizes": [
+          "512x512"
+        ],
+        "mimeType": "image/png"
+      }
+    ]
+  },
+  "detectors_run": [
+    "no-authentication-remote",
+    "no-tls-transport",
+    "missing-www-authenticate",
+    "missing-protected-resource-metadata",
+    "session-id-in-url",
+    "predictable-session-id",
+    "origin-not-validated",
+    "cors-misconfiguration",
+    "auth-endpoints-not-https",
+    "missing-as-metadata",
+    "implicit-flow-enabled"
+  ],
+  "tiers_selected": "all",
+  "excluded": [
+    "open-dcr"
+  ],
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-06-18, session=yes",
+    "notifications/initialized -> HTTP 202",
+    "PRM GET https://mcp.autonomad.ai/.well-known/oauth-protected-resource/mcp -> HTTP 404",
+    "PRM GET https://mcp.autonomad.ai/.well-known/oauth-protected-resource -> HTTP 404",
+    "No usable RFC 9728 Protected Resource Metadata document (tried: https://mcp.autonomad.ai/.well-known/oauth-protected-resource/mcp, https://mcp.autonomad.ai/.well-known/oauth-protected-resource).",
+    "AS metadata GET https://mcp.autonomad.ai/.well-known/oauth-authorization-server -> HTTP 404",
+    "AS metadata GET https://mcp.autonomad.ai/.well-known/openid-configuration -> HTTP 404",
+    "No Authorization Server Metadata resolved (PRM or origin).",
+    "DELETE session -> HTTP 200"
+  ],
+  "summary": {
+    "HAS_GAP": 4,
+    "NO_GAP": 3,
+    "NOT_APPLICABLE": 3,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "REQUEST: POST https://mcp.autonomad.ai/mcp (JSON-RPC tools/list) with NO Authorization header Mcp-Session-Id: cf2d7be2-5b29-4ade-a94d-b311d9043705\nRESPONSE: HTTP 200\nevent: message\ndata: {\"result\":{\"tools\":[{\"name\":\"search_hotels\",\"description\":\"Search hotels, lodging, accommodations, resorts, and places to stay for a trip. Filter by city, country, check-in/check-out dates, room type, nightly price, star rating, and amenities (pool, gym, wifi, etc.). Returns matching properties with rates, photos, and availability across 2M+ properties (LiteAPI). Use this when \u2026[truncated]",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 7 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: GET https://mcp.autonomad.ai/mcp with NO Authorization header\nRESPONSE: HTTP 400\n{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Bad Request: No valid session ID provided. Send an initialize request first.\"},\"id\":null}",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": "Endpoint is https and its certificate validated."
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://mcp.autonomad.ai/mcp (JSON-RPC tools/list) with NO Authorization header Mcp-Session-Id: cf2d7be2-5b29-4ade-a94d-b311d9043705\nRESPONSE: HTTP 200\nevent: message\ndata: {\"result\":{\"tools\":[{\"name\":\"search_hotels\",\"description\":\"Search hotels, lodging, accommodations, resorts, and places to stay for a trip. Filter by city, country, check-in/check-out dates, room type, nightly price, star rating, and amenities (pool, gym, wifi, etc.). Returns matching properties with rates, photos, and availability across 2M+ properties (LiteAPI). Use this when \u2026[truncated]",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "No authentication challenge to inspect (HTTP 200 is not an authentication challenge), so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "PRM GET https://mcp.autonomad.ai/.well-known/oauth-protected-resource/mcp -> HTTP 404; PRM GET https://mcp.autonomad.ai/.well-known/oauth-protected-resource -> HTTP 404; No usable RFC 9728 Protected Resource Metadata document (tried: https://mcp.autonomad.ai/.well-known/oauth-protected-resource/mcp, https://mcp.autonomad.ai/.well-known/oauth-protected-resource).; AS metadata GET https://mcp.autonomad.ai/.well-known/oauth-authorization-server -> HTTP 404",
+      "spec_reference": "MCP Authorization: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers. RFC 9728 \u00a73.1 locates it by inserting the well-known suffix before the resource path.",
+      "notes": "No RFC 9728 metadata document at either the path-inserted or the origin well-known location."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "Mcp-Session-Id header present (len=36)",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "Session conveyed via header per Streamable HTTP."
+    },
+    {
+      "gap_id": "predictable-session-id",
+      "name": "Predictable session identifier",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "observed session ids: ['cf2d7be2-5b29-4ade-a94d-b311d9043705', '2148e8bc-9598-493b-b11c-418c5990a070', '3bffa320-74ad-423b-8449-9a43dcbfe61a', '00a80604-f8fc-4699-9470-c6374c44d81c', 'f40e74f4-c737-4434-8017-de8ed10ebeab']",
+      "spec_reference": "MCP Transports \u00a7Session Management: session id SHOULD be globally unique and cryptographically secure. Security Best Practices \u00a7Session Hijacking: servers MUST use secure, non-deterministic session IDs; avoid predictable/sequential ones.",
+      "notes": "5 distinct session ids, weakest 36 chars of lowercase hex with hyphens (UUID-like) (17 symbols) \u2248 147 bits, no constant/sequential pattern (checked determinism, counter sequences, shared-prefix counters, and entropy)."
+    },
+    {
+      "gap_id": "origin-not-validated",
+      "name": "Origin header not validated (DNS rebinding)",
+      "verdict": "HAS_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: POST https://mcp.autonomad.ai/mcp (JSON-RPC initialize) with NO Authorization header Origin: https://evil.attacker.example\nRESPONSE: HTTP 200\nevent: message\ndata: {\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{},\"resources\":{}},\"serverInfo\":{\"name\":\"autonomad-travel\",\"version\":\"1.4.0\",\"title\":\"Autonomad Travel\",\"description\":\"AI travel agent for Claude \u2014 search live flights (Duffel), hotels (LiteAPI + direct), Viator activities, and Ticketmaster/SeatGeek events, then complete the booking on autonomad.ai. Signing up i \u2026[truncated]",
+      "spec_reference": "MCP Transports \u00a7Security Warning: servers MUST validate the Origin header on all incoming connections to prevent DNS rebinding attacks.",
+      "notes": "initialize from forged Origin 'https://evil.attacker.example' succeeded (HTTP 200 with a valid result) \u2014 the server accepts cross-origin requests it should reject."
+    },
+    {
+      "gap_id": "cors-misconfiguration",
+      "name": "CORS reflects arbitrary origin with credentials",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "Access-Control-Allow-Origin: https://evil.attacker.example; Allow-Credentials: False",
+      "spec_reference": "Not in the MCP spec. General web security: reflecting an arbitrary Origin in Access-Control-Allow-Origin together with Access-Control-Allow-Credentials: true lets any website make credentialed cross-origin calls.",
+      "notes": "Reflects an arbitrary Origin but without Allow-Credentials \u2014 lower risk (no cookies/credentials shared). Worth noting, not a clear finding."
+    },
+    {
+      "gap_id": "auth-endpoints-not-https",
+      "name": "OAuth endpoint not served over HTTPS",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "high",
+      "evidence": "",
+      "spec_reference": "OAuth 2.1 \u00a71.5 & MCP Authorization \u00a72.8: all OAuth protocol URLs MUST use https (loopback exempt). RFC 8414 mandates https for issuer / jwks_uri / metadata path.",
+      "notes": "No authorization-server URLs or AS-metadata endpoints were discovered, so there is nothing to check for https."
+    },
+    {
+      "gap_id": "missing-as-metadata",
+      "name": "Missing OAuth Authorization Server Metadata (RFC 8414)",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "No authorization server is advertised (no PRM authorization_servers) and the server's own origin exposes no RFC 8414 metadata (overlaps #4 missing-PRM)",
+      "spec_reference": "MCP Authorization \u00a72.3.2: clients MUST follow RFC 8414 to obtain AS metadata; authorization servers MUST provide it. Distinct from RFC 9728 PRM (#4).",
+      "notes": "No authorization server is advertised (no PRM authorization_servers) and the server's own origin exposes no RFC 8414 metadata (overlaps #4 missing-PRM) \u2014 required under 2025-06-18."
+    },
+    {
+      "gap_id": "implicit-flow-enabled",
+      "name": "Implicit grant advertised (forbidden by OAuth 2.1)",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "high",
+      "evidence": "",
+      "spec_reference": "OAuth 2.1 \u00a71.8 removes the implicit grant; MCP \u00a72.3 mandates OAuth 2.1. RFC 8414: response_types_supported 'token' or grant_types_supported 'implicit' advertise it.",
+      "notes": "No usable AS metadata resolved, so advertised grant/response types are unknown (see missing-as-metadata; a document whose issuer does not match MUST NOT be used per RFC 8414 \u00a73.3)."
+    }
+  ],
+  "oauth": {
+    "prm_url": "https://mcp.autonomad.ai/.well-known/oauth-protected-resource",
+    "prm_source": "",
+    "authorization_servers": [],
+    "as_metadata_url": "",
+    "as_metadata_usable": false,
+    "unresolved_servers": [],
+    "blocked_urls": [],
+    "external_hosts_contacted": []
+  }
+}

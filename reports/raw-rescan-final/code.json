@@ -1,0 +1,149 @@
+{
+  "report_version": 2,
+  "target": "https://mcp.paperlantern.ai/chat/mcp",
+  "reachable": true,
+  "protocol_version": null,
+  "server_info": {},
+  "detectors_run": [
+    "no-authentication-remote",
+    "no-tls-transport",
+    "missing-www-authenticate",
+    "missing-protected-resource-metadata",
+    "session-id-in-url",
+    "predictable-session-id",
+    "origin-not-validated",
+    "cors-misconfiguration",
+    "auth-endpoints-not-https",
+    "missing-as-metadata",
+    "implicit-flow-enabled"
+  ],
+  "tiers_selected": "all",
+  "excluded": [
+    "open-dcr"
+  ],
+  "discovery": [
+    "initialize -> HTTP 403, protocolVersion=unspecified, session=no",
+    "PRM GET https://mcp.paperlantern.ai/.well-known/oauth-protected-resource/chat/mcp -> HTTP 403",
+    "PRM GET https://mcp.paperlantern.ai/.well-known/oauth-protected-resource -> HTTP 403",
+    "No usable RFC 9728 Protected Resource Metadata document (tried: https://mcp.paperlantern.ai/.well-known/oauth-protected-resource/chat/mcp, https://mcp.paperlantern.ai/.well-known/oauth-protected-resource).",
+    "AS metadata GET https://mcp.paperlantern.ai/.well-known/oauth-authorization-server -> HTTP 403",
+    "AS metadata GET https://mcp.paperlantern.ai/.well-known/openid-configuration -> HTTP 403",
+    "No Authorization Server Metadata resolved (PRM or origin)."
+  ],
+  "summary": {
+    "INCONCLUSIVE": 6,
+    "NO_GAP": 2,
+    "NOT_APPLICABLE": 3
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "INCONCLUSIVE",
+      "severity": "critical",
+      "evidence": "REQUEST: POST https://mcp.paperlantern.ai/chat/mcp (JSON-RPC tools/list) with NO Authorization header\nRESPONSE: HTTP 403\n{\"error\":\"Missing API key\"}",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "HTTP 403 whose body reports error 'missing api key', which is not an authentication/authorization decision (RFC 6750 \u00a73.1) \u2014 so it is NOT evidence that the server requires authentication. The server may well require authentication, but this response does not prove it \u2014 a blocked scan looks the same."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: GET https://mcp.paperlantern.ai/chat/mcp with NO Authorization header\nRESPONSE: HTTP 403\n{\"error\":\"Missing API key\"}",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": "Endpoint is https and its certificate validated."
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://mcp.paperlantern.ai/chat/mcp (JSON-RPC tools/list) with NO Authorization header\nRESPONSE: HTTP 403\n{\"error\":\"Missing API key\"}",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "No authentication challenge to inspect (HTTP 403 whose body reports error 'missing api key', which is not an authentication/authorization decision (RFC 6750 \u00a73.1) \u2014 so it is NOT evidence that the server requires authentication), so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "PRM GET https://mcp.paperlantern.ai/.well-known/oauth-protected-resource/chat/mcp -> HTTP 403; PRM GET https://mcp.paperlantern.ai/.well-known/oauth-protected-resource -> HTTP 403; No usable RFC 9728 Protected Resource Metadata document (tried: https://mcp.paperlantern.ai/.well-known/oauth-protected-resource/chat/mcp, https://mcp.paperlantern.ai/.well-known/oauth-protected-resource).; AS metadata GET https://mcp.paperlantern.ai/.well-known/oauth-authorization-server -> HTTP 403",
+      "spec_reference": "MCP Authorization: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers. RFC 9728 \u00a73.1 locates it by inserting the well-known suffix before the resource path.",
+      "notes": "No metadata document found; the server negotiated no version, before RFC 9728 became a MUST."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://mcp.paperlantern.ai/chat/mcp (JSON-RPC initialize) with NO Authorization header\nRESPONSE: HTTP 403\n{\"error\":\"Missing API key\"}\n--- SSE probe ---\nREQUEST: GET https://mcp.paperlantern.ai/chat/mcp with NO Authorization header\nRESPONSE: HTTP 403\n{\"error\":\"Missing API key\"}",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed. The server may be stateless (no session at all), in which case this gap cannot apply."
+    },
+    {
+      "gap_id": "predictable-session-id",
+      "name": "Predictable session identifier",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://mcp.paperlantern.ai/chat/mcp (JSON-RPC initialize) with NO Authorization header\nRESPONSE: HTTP 403\n{\"error\":\"Missing API key\"}",
+      "spec_reference": "MCP Transports \u00a7Session Management: session id SHOULD be globally unique and cryptographically secure. Security Best Practices \u00a7Session Hijacking: servers MUST use secure, non-deterministic session IDs; avoid predictable/sequential ones.",
+      "notes": "initialize answered HTTP 403 and issued no session id, so predictability could not be assessed."
+    },
+    {
+      "gap_id": "origin-not-validated",
+      "name": "Origin header not validated (DNS rebinding)",
+      "verdict": "INCONCLUSIVE",
+      "severity": "high",
+      "evidence": "forged Origin: REQUEST: POST https://mcp.paperlantern.ai/chat/mcp (JSON-RPC initialize) with NO Authorization header Origin: https://evil.attacker.example\nRESPONSE: HTTP 403\n{\"error\":\"Missing API key\"}\n--- control (no Origin) ---\nREQUEST: POST https://mcp.paperlantern.ai/chat/mcp (JSON-RPC initialize) with NO Authorization header\nRESPONSE: HTTP 403\n{\"error\":\"Missing API key\"}",
+      "spec_reference": "MCP Transports \u00a7Security Warning: servers MUST validate the Origin header on all incoming connections to prevent DNS rebinding attacks.",
+      "notes": "The server answered 403 to the forged Origin AND to an identical request with no Origin header at all, so the refusal is not attributable to Origin validation."
+    },
+    {
+      "gap_id": "cors-misconfiguration",
+      "name": "CORS reflects arbitrary origin with credentials",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "no Access-Control-Allow-Origin in response to Origin https://evil.attacker.example",
+      "spec_reference": "Not in the MCP spec. General web security: reflecting an arbitrary Origin in Access-Control-Allow-Origin together with Access-Control-Allow-Credentials: true lets any website make credentialed cross-origin calls.",
+      "notes": "Server grants no cross-origin access (safe; MCP clients aren't browsers)."
+    },
+    {
+      "gap_id": "auth-endpoints-not-https",
+      "name": "OAuth endpoint not served over HTTPS",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "high",
+      "evidence": "",
+      "spec_reference": "OAuth 2.1 \u00a71.5 & MCP Authorization \u00a72.8: all OAuth protocol URLs MUST use https (loopback exempt). RFC 8414 mandates https for issuer / jwks_uri / metadata path.",
+      "notes": "No authorization-server URLs or AS-metadata endpoints were discovered, so there is nothing to check for https."
+    },
+    {
+      "gap_id": "missing-as-metadata",
+      "name": "Missing OAuth Authorization Server Metadata (RFC 8414)",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "No authorization server is advertised (no PRM authorization_servers) and the server's own origin exposes no RFC 8414 metadata (overlaps #4 missing-PRM)",
+      "spec_reference": "MCP Authorization \u00a72.3.2: clients MUST follow RFC 8414 to obtain AS metadata; authorization servers MUST provide it. Distinct from RFC 9728 PRM (#4).",
+      "notes": "No authorization server is advertised (no PRM authorization_servers) and the server's own origin exposes no RFC 8414 metadata (overlaps #4 missing-PRM); server negotiated <2025-06-18 where RFC 8414 is not a MUST."
+    },
+    {
+      "gap_id": "implicit-flow-enabled",
+      "name": "Implicit grant advertised (forbidden by OAuth 2.1)",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "high",
+      "evidence": "",
+      "spec_reference": "OAuth 2.1 \u00a71.8 removes the implicit grant; MCP \u00a72.3 mandates OAuth 2.1. RFC 8414: response_types_supported 'token' or grant_types_supported 'implicit' advertise it.",
+      "notes": "No usable AS metadata resolved, so advertised grant/response types are unknown (see missing-as-metadata; a document whose issuer does not match MUST NOT be used per RFC 8414 \u00a73.3)."
+    }
+  ],
+  "oauth": {
+    "prm_url": "https://mcp.paperlantern.ai/.well-known/oauth-protected-resource",
+    "prm_source": "",
+    "authorization_servers": [],
+    "as_metadata_url": "",
+    "as_metadata_usable": false,
+    "unresolved_servers": [],
+    "blocked_urls": [],
+    "external_hosts_contacted": []
+  }
+}

@@ -47,16 +47,18 @@ Two unrelated projects share the parent folder:
 - **`MCP-Scanner/`** (Knostic) — *discovers* MCP servers on the internet via Shodan (a search engine that scans the whole internet; needs a paid key). Its `examples/sample_output.json` advertises a `security_findings` block (`authentication`, `ssl_enabled`, `cors_enabled`, `rate_limiting`) and a `risk_level` — **but its code never produces those fields** (verified: the string appears only in that sample file). This project is the engine that would fill them.
 - **`MSB/`** (ICLR 2026 benchmark) — measures whether the *AI itself* can be tricked by booby-trapped tool descriptions ("tool poisoning") or hidden instructions ("prompt injection"). That's the AI's *behaviour*. We test the server's *plumbing*. Different layer, out of scope. Its stdio servers are usable as local targets.
 
-**In scope:** authentication, authorization, token handling, transport-level identity — no-auth servers, missing TLS, OAuth discovery/metadata compliance, token audience, token passthrough, confused deputy, sessions, PKCE, redirect validation, DNS-rebinding/`Origin`, CORS.
+**In scope:** what an *unauthenticated* client can observe about a server's authentication posture — no-auth servers, missing or broken TLS, OAuth discovery/metadata compliance (RFC 9728 / 8414), advertised grant types, open client registration, session identifier handling, DNS-rebinding/`Origin`, CORS.
 
-**Out of scope:** prompt injection / tool poisoning / malicious tool *content* (MSB's lane). Gap #20 is a deliberate bridge and stays optional.
+**Out of scope, deliberately:**
+
+- **Anything requiring a real token or a completed login.** See "Tier 3 is dropped" below.
+- **Prompt injection / tool poisoning / malicious tool *content*** — that is the AI's behaviour, and `MSB/`'s lane.
 
 ---
 
-## The gap catalog (21 gaps)
+## The gap catalog (12 gaps)
 
-Grounded in the MCP Authorization spec, Security Best Practices, Transports, OAuth 2.1,
-RFCs 9728 / 8414 / 7591 / 8707, and research (Invariant Labs, Equixly, OWASP MCP Top-10).
+Grounded in the MCP Authorization spec, Security Best Practices, Transports, OAuth 2.1, RFCs 9728 / 8414 / 7591 / 8707, and research (Invariant Labs, Equixly, OWASP MCP Top-10).
 
 ### Tier 1 — easy: one unauthenticated request ✅ built
 
@@ -80,27 +82,20 @@ RFCs 9728 / 8414 / 7591 / 8707, and research (Invariant Labs, Equixly, OWASP MCP
 | 11 | `implicit-flow-enabled` | Advertises the old unsafe login style that puts the token in the web address | high |
 | 12 | `open-dcr` | Anyone can self-register as a client with no checks — **performs a write** | high |
 
-### Tier 3 — hard: real tokens, multi-step login, or behaviour over time ❌ designed only
+### Tier 3 — dropped
 
-| # | id | What it checks | Sev |
-|---|----|---|---|
-| 13 | `no-pkce` | Login flow doesn't require PKCE | high |
-| 14 | `missing-token-audience-validation` | Accepts a ticket issued for a *different* service | critical |
-| 15 | `token-passthrough` | Forwards your ticket straight to a back-end instead of using its own credentials | critical |
-| 16 | `confused-deputy-proxy-consent` | A middleman reuses one identity for everyone and skips consent | high |
-| 17 | `improper-redirect-uri-validation` | Loose matching on where login sends you back — an attacker can steal the code | high |
-| 18 | `session-used-for-auth` | The conversation tag alone gets you in, treated as proof of login | high |
-| 19 | `self-asserted-capabilities` | Server claims abilities it never proved; can disguise its requests as user input | high |
-| 20 | `credential-harvesting-tool-desc` *(optional bridge)* | Tool descriptions point at private files or relay another server's token | high |
-| 21 | `missing-session-isolation` | One user's session can read or affect another's | high |
+Nine further gaps were designed but **never built, and the project no longer intends to build them**: `no-pkce`, `missing-token-audience-validation`, `token-passthrough`,  `confused-deputy-proxy-consent`, `improper-redirect-uri-validation`, `session-used-for-auth`, `self-asserted-capabilities`, `credential-harvesting-tool-desc`, `missing-session-isolation`.
 
-### Research-angle map
+%% **Why they are out.** Every one needs something this project does not have: a valid access token, a completed multi-step login against a server we do not own, several concurrent authenticated sessions, or a downstream back-end to watch a token being forwarded to.
+Obtaining those against third-party production servers is not something an unauthenticated scanner can do, and two of them (`token-passthrough`, `missing-session-isolation`) could only ever have been graded best-effort even with credentials, because the evidence lives on a system we cannot observe.
 
-| Angle | Focus | Gaps |
-|---|---|---|
-| **3 — Discovery/PRM** | Does the server correctly advertise and enforce its login process? No login needed, testable today | 1–5, 9–12 |
-| **1 — Token passthrough** | The boundary between the MCP server and the back-ends behind it. Needs real tokens | 14, 15 |
-| **2 — Identity isolation / confused deputy** | Keeping users apart. Needs several logged-in sessions at once | 12, 16, 19, 21 |
+The honest consequence: **this tool measures whether a server *advertises and enforces* login correctly, not whether its login is *sound*.** A server can score `NO_GAP` on all twelve gaps here and still mishandle token audience, skip PKCE, or leak between users. That limit is stated wherever results are reported rather than left implied. %%
+
+### Research angle
+
+Only **angle 3 — Discovery/PRM** remains: does the server correctly advertise and enforce its login process, as observed with no credentials? That covers gaps 1–12 and needs no login, so it is testable today against any public endpoint.
+
+The two angles that depended on Tier 3 are closed: *token passthrough* (gaps 14, 15) and *identity isolation / confused deputy* (16, 19, 21). Gap #12 `open-dcr` survives  on its own terms — open registration is observable without a token, and it is the prerequisite an identity-confusion attack would build on.
 
 ---
 
@@ -145,7 +140,7 @@ YamAmit-MCP-auth/
       tier2.py           # gaps 6-12
     cli.py               # `mcpauth scan <url>`
   sandbox/               # 7 local test servers (see Validation)
-  tests/                 # 165 tests
+  tests/                 # 169 tests
   reports/               # raw scan evidence + per-batch result tables
 ```
 
@@ -194,7 +189,7 @@ uv run mcpauth scan http://127.0.0.1:9110/mcp --tier 2
 
 ## Validation
 
-`uv run pytest -q` → **165 tests pass.**
+`uv run pytest -q` → **169 tests pass.**
 
 Detectors are validated against local sandbox servers we control, because no single server exercises every verdict path (a no-auth server can never demonstrate a malformed `401`):
 
@@ -208,7 +203,7 @@ Detectors are validated against local sandbox servers we control, because no sin
 | `stateful_open_server.py` | **wide open yet stateful** — requires a session ID like the spec says. Catches a prober that skips the handshake and grades a wide-open server `INCONCLUSIVE` |
 | `subpath_prm_server.py` | **fully compliant at a subpath** — publishes its PRM at the RFC 9728 §3.1 path-inserted location. Catches a prober that only probes the bare origin |
 
-Test layers: 35 verdict-matrix cases against the live sandboxes (`test_tier1.py` 14, `test_tier2.py` 21), 96 unit tests of the decision helpers (entropy, sequence detection, URL construction, SSRF guard, auth-challenge classification, SSE framing, version gating), and 34 regression tests pinning verdicts, CLI contracts, and error paths that were previously wrong.
+Test layers: 35 verdict-matrix cases against the live sandboxes (`test_tier1.py` 14, `test_tier2.py` 21), 96 unit tests of the decision helpers (entropy, sequence detection, URL construction, SSRF guard, auth-challenge classification, SSE framing, version gating), and 38 regression tests pinning verdicts, CLI contracts, and error paths that were previously wrong.
 
 A detector is "done" only when it returns `HAS_GAP` against the vulnerable posture and `NO_GAP` against the hardened one.
 
@@ -216,38 +211,87 @@ A detector is "done" only when it returns `HAS_GAP` against the vulnerable postu
 
 ## Real-world results — 88 public endpoints
 
-Recomputed from the committed raw JSON in `reports/raw/` and `reports/raw_tier2/`.
-Per-endpoint tables in `reports/real_world_scan.md` (36) and `real_world_scan_batch2.md` (52);
-Tier-2 detail in `real_world_scan_tier2.md`. Endpoint list: `reports/endpoints.txt`.
+One read-only scan per endpoint, all 11 non-write detectors, 2026-09-18. Raw JSON in
+`reports/raw-rescan-final/`; endpoint list in `reports/endpoints.txt`. Every count below was
+recomputed from that JSON, not carried over from an earlier write-up.
 
 | Gap | HAS_GAP | NO_GAP | N/A | INCONCLUSIVE | ERROR |
 |---|--:|--:|--:|--:|--:|
-| `no-authentication-remote` | 24 | 46 | 0 | 14 | 4 |
-| `no-tls-transport` | 0 | 88 | 0 | 0 | 0 |
-| `missing-www-authenticate` | 0 | 31 | 38 | 15 | 4 |
-| `missing-protected-resource-metadata` | 17 | 39 | 0 | 28 | 4 |
-| `session-id-in-url` | 0 | 11 | 0 | 73 | 4 |
-| `predictable-session-id` | 0 | 11 | 76 | 0 | 0 |
-| `origin-not-validated` | 27 | 5 | 0 | 52 | 3 |
-| `cors-misconfiguration` | 4 | 64 | 0 | 16 | 3 |
-| `auth-endpoints-not-https` | 0 | 53 | 34 | 0 | 0 |
-| `missing-as-metadata` | 14 | 51 | 0 | 22 | 0 |
-| `implicit-flow-enabled` | 1 | 52 | 33 | 1 | 0 |
+| `no-authentication-remote` | **30** | 42 | 0 | 12 | 4 |
+| `no-tls-transport` | 0 | 83 | 0 | 5 | 0 |
+| `missing-www-authenticate` | 0 | 32 | 42 | 10 | 4 |
+| `missing-protected-resource-metadata` | 22 | 41 | 0 | 25 | 0 |
+| `session-id-in-url` | 0 | 10 | 0 | 74 | 4 |
+| `predictable-session-id` | 0 | 10 | 20 | 58 | 0 |
+| `origin-not-validated` | 26 | 10 | 0 | 48 | 4 |
+| `cors-misconfiguration` | 2 | 68 | 0 | 14 | 4 |
+| `auth-endpoints-not-https` | 0 | 52 | 36 | 0 | 0 |
+| `missing-as-metadata` | 13 | 53 | 0 | 22 | 0 |
+| `implicit-flow-enabled` | 0 | 52 | 35 | 1 | 0 |
 
-The five Tier-1 rows cover all 88 endpoints; the six Tier-2 rows cover **87** — one endpoint (`hostprofit`) timed out during the Tier-2 pass. `open-dcr` is absent from the table because it was never run in bulk (see the obligation below for the four servers it did reach).
+All eleven rows cover all 88 endpoints — Tier 1 and Tier 2 ran in one pass, so there is no
+longer a 87-vs-88 discrepancy between them. `open-dcr` is absent because it writes and was not
+run in bulk; see the obligation below for the four servers it did reach.
 
-**What this shows.** Famous remote servers are overwhelmingly hardened — they demand login.
-The open servers cluster in the lesser-known registry long tail (~22 of the 24). DeepWiki and EdgeOne are open *by design*; EdgeOne is the more interesting one because its anonymous tool (`deploy-html`) *changes things*. `origin-not-validated` (27) is a genuine spec-MUST miss but mostly overlaps the same wide-open servers, and the DNS-rebinding threat it guards against is weak for remote HTTPS servers. `cors-misconfiguration` is a general web-security heuristic —
-**CORS is not in the MCP spec** and is never reported as a spec violation.
+**30 servers answer `tools/list` to an anonymous caller — 456 callable tools in total.** The
+largest are `dock` (70 tools), `switch` (61), `gondola` (39) and `nullary` (35). They cluster
+in the lesser-known registry long tail; the recognisable vendor servers (Stripe, Notion,
+Sentry, Linear, GitHub, PayPal, Square, Wix, Zapier, Intercom, Atlassian, Cloudflare's
+authenticated set, Neon, Grafana, Prisma, Vercel, Webflow, Semgrep) all demand login. DeepWiki
+and EdgeOne are open *by design*; EdgeOne remains the most interesting single case, because its
+anonymous tool `deploy-html` **changes state** rather than only reading.
 
-**⚠ These numbers are provisional and should be re-scanned.** They were produced before several verdict bugs were fixed, and three limits still apply to them:
+`origin-not-validated` (26) is a real spec-MUST miss but overlaps the same wide-open servers,
+and the DNS-rebinding threat it guards against is weak for a remote HTTPS server.
+`cors-misconfiguration` is a general web-security heuristic — **CORS is not in the MCP spec**
+and is never reported as a spec violation.
 
-- **The PRM check only probed the bare origin**, never the RFC 9728 path-inserted location.
-  Most real MCP endpoints sit at a subpath, so the 17 + 14 metadata counts cannot be distinguished from fully compliant servers. This is now fixed in the code but the published numbers predate it.
-- **59 of 88 servers negotiated no protocol version at all** (21 reported 2025-06-18, 5 on 2025-03-26, 3 on 2024-11-05), because protected servers answer `401` before negotiating. So the strict-spec bar only ever applied to 21 targets, and version-gated gaps came back `INCONCLUSIVE` elsewhere.
-- **The legacy two-channel SSE handshake is still unimplemented**, which is why `session-id-in-url` is 73/88 `INCONCLUSIVE` and `predictable-session-id` is 76/88 N/A.
+### What changed against the previously published numbers, and why
 
-**Honest framing:** "hardened" here means only that the server enforces auth on the first unauthenticated call. It says nothing about its OAuth flow, token audience, PKCE, or session handling — those are Tier-3 gaps needing tokens we don't hold. A spec-MUST miss is not automatically an exploit.
+The earlier table **understated the headline finding**: it reported 24 open servers where there
+are 30. Two bugs in the prober, both fixed and both now pinned by regression tests, were
+responsible for most of the movement:
+
+- **Response bodies were silently clipped.** The probe called `StreamReader.read(cap)` once,
+  which returns *up to* `cap` bytes rather than `cap` bytes. Any response larger than one
+  buffered chunk arrived as a fragment, flagged `truncated=False` — data loss presenting itself
+  as complete data. `dock`'s 91,703-byte tool listing came back as 8,183 bytes of unparseable
+  JSON, so a server that had just enumerated 70 tools to an unauthenticated caller was graded
+  `INCONCLUSIVE`. Six servers were hidden this way.
+- **A bare `403` counted as authentication.** Any `403` was read as "the server requires
+  login", so a WAF block, geo-fence or bot filter earned a clean `NO_GAP`. A `403` now needs
+  corroboration — a `WWW-Authenticate` header, or a genuine RFC 6750 error code in the body —
+  which is why `NO_GAP` fell from 46 to 42 while `INCONCLUSIVE` stayed honest.
+
+Two further shifts are the tool becoming honest rather than the internet changing:
+
+- `predictable-session-id` moved from **76 `NOT_APPLICABLE` to 58 `INCONCLUSIVE`**. It used to
+  claim "this server has no sessions" whenever it saw no session id — including when the server
+  had refused to open one because we were not logged in. It now distinguishes "stateless" from
+  "could not observe", so the honest answer is *unknown* for most targets.
+- `no-tls-transport` moved from **88 `NO_GAP` to 83 + 5 `INCONCLUSIVE`**. It previously passed
+  every `https://` URL without testing anything; it now makes a live request, and says so when
+  a host cannot be reached to have its certificate checked.
+
+`missing-protected-resource-metadata` rose from 17 to 22 `HAS_GAP` even though RFC 9728 §3.1
+path insertion is now implemented — path insertion moved some servers *out* of the gap, but
+removing the 4 `ERROR`s and sharpening `INCONCLUSIVE` moved more in.
+
+**Still limiting these numbers:**
+
+- **58 of 88 servers negotiated no protocol version at all** (22 reported 2025-06-18, 4 on
+  2025-03-26, 4 on 2024-11-05), because a protected server answers `401` before negotiating. The
+  strict-spec bar therefore only ever applied to 22 targets, and version-gated gaps return
+  `INCONCLUSIVE` elsewhere.
+- **The legacy two-channel SSE handshake is still unimplemented**, which is why
+  `session-id-in-url` is 74/88 `INCONCLUSIVE`.
+- **88 endpoints is a thin sample.** The registry holds 75,000+ records (see below), so these
+  are rates within one host-deduped slice, not population rates.
+
+**Honest framing:** "hardened" here means only that the server enforces auth on the first
+unauthenticated call. It says nothing about whether its OAuth flow, token audience, PKCE, or
+session isolation are sound — those were the dropped Tier-3 gaps, and this tool will never
+report on them. A spec-MUST miss is also not automatically an exploit.
 
 ### Discovery: Shodan is not needed
 
@@ -281,11 +325,11 @@ Row 2 is why the containment rules exist. Current decision: leave them, keep thi
 
 The current MCP revision is **`2026-07-28`**; `2025-11-25` also exists. The tool speaks `2025-06-18`. This matters more than a version bump:
 
-- **Protocol-level sessions were removed in 2026-07-28** — no `Mcp-Session-Id`, no GET stream, no `DELETE` termination. Those existed only in `2025-03-26` … `2025-11-25`. So gaps **#5, #6, #18, #21 are scoped to a transport generation the spec has dropped** and need explicit version scoping rather than being presented as timeless.
+- **Protocol-level sessions were removed in 2026-07-28** — no `Mcp-Session-Id`, no GET stream, no `DELETE` termination. Those existed only in `2025-03-26` … `2025-11-25`. So gaps **#5 and #6 are scoped to a transport generation the spec has dropped** and need explicit version scoping rather than being presented as timeless. (#18 and #21 were the other session-era gaps; they are dropped with Tier 3.)
 - **The 2024-11-05 HTTP+SSE transport is deprecated** and eligible for removal — so building the legacy two-channel handshake is investing in a dying transport. Worth a scope decision.
 - **New per-request requirements** the prober doesn't meet: `Mcp-Method` and `Mcp-Name `headers are REQUIRED for compliance, and header values must match the body. A strict current-revision server *must* reject our requests with `400 HeaderMismatch`.
 - **`server/discover` is now a mandatory RPC** — a better probe than `initialize`, and the spec now defines the exact old-vs-new detection algorithm to implement.
-- Still MUSTs, so these gaps remain on solid ground: RFC 9728 PRM (unconditional now), token audience validation (#14), and the token-passthrough ban (#15) — *"MCP servers MUST NOT accept or transit any other tokens."*
+- RFC 9728 PRM is now an **unconditional MUST**, which strengthens #4 — the one gap here the newest revision made stricter rather than weaker. (Token audience validation and the token-passthrough ban are also still MUSTs, but they were #14/#15 and are dropped with Tier 3, so this tool does not check them.)
 - **Two framings need updating:** RFC 8414 is now *"at least one of RFC 8414 **or** OpenID Connect Discovery"*, so #10 must not treat a missing 8414 document as a violation when OIDC discovery is present (the code already tries both). And **DCR is now deprecated**, retained only for backwards compatibility, with Client ID Metadata Documents as the replacement — so #12's framing is dated.
 
 ---
@@ -314,8 +358,6 @@ The current MCP revision is **`2026-07-28`**; `2025-11-25` also exists. The tool
 
 **Not yet built**
 
-- Tier 3 (gaps 13–21). Needs an OAuth-capable mock authorization server in the sandbox. The behavioural ones (#15 token passthrough, #21 isolation) may stay best-effort without a downstream system to observe — to be documented honestly, never silently skipped.
-- A re-scan of the 88 endpoints, to replace the provisional numbers above.
 - `discovery.py` with pluggable free sources (MCP Registry primary), to drop the Shodan dependency entirely and feed a bulk run.
 
 ---
