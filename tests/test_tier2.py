@@ -126,8 +126,9 @@ def test_open_dcr_cleans_up_after_itself(urls):
     assert "MANUAL CLEANUP NEEDED" not in dcr["notes"], dcr["notes"]
 
 
-def test_safe_flag_excludes_open_dcr(urls):
-    """`--safe` (WRITE_DETECTORS exclusion) must drop the only write detector."""
+def test_write_detectors_excluded_by_default(urls):
+    """Excluding WRITE_DETECTORS — what the CLI does unless given --unsafe-writes — must
+    drop the only write detector."""
     from mcpauth.detectors import WRITE_DETECTORS
 
     assert WRITE_DETECTORS == {"open-dcr"}

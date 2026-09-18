@@ -1,0 +1,172 @@
+{
+  "report_version": 2,
+  "target": "https://mcp.justpublish.ai/",
+  "reachable": true,
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "Just Publish",
+    "title": "Just Publish",
+    "version": "0.1.11",
+    "description": "Publish the website you built with AI to a live public URL, straight from chat, with no setup.",
+    "websiteUrl": "https://justpublish.ai",
+    "icons": [
+      {
+        "src": "https://justpublish.ai/icon.png",
+        "sizes": [
+          "512x512"
+        ],
+        "mimeType": "image/png"
+      },
+      {
+        "src": "https://justpublish.ai/icon-192.png",
+        "sizes": [
+          "192x192"
+        ],
+        "mimeType": "image/png"
+      }
+    ]
+  },
+  "detectors_run": [
+    "no-authentication-remote",
+    "no-tls-transport",
+    "missing-www-authenticate",
+    "missing-protected-resource-metadata",
+    "session-id-in-url",
+    "predictable-session-id",
+    "origin-not-validated",
+    "cors-misconfiguration",
+    "auth-endpoints-not-https",
+    "missing-as-metadata",
+    "implicit-flow-enabled"
+  ],
+  "tiers_selected": "all",
+  "excluded": [
+    "open-dcr"
+  ],
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-06-18, session=yes",
+    "notifications/initialized -> HTTP 202",
+    "PRM GET https://mcp.justpublish.ai/.well-known/oauth-protected-resource -> HTTP 404",
+    "No usable RFC 9728 Protected Resource Metadata document (tried: https://mcp.justpublish.ai/.well-known/oauth-protected-resource).",
+    "AS metadata GET https://mcp.justpublish.ai/.well-known/oauth-authorization-server -> HTTP 404",
+    "AS metadata GET https://mcp.justpublish.ai/.well-known/openid-configuration -> HTTP 404",
+    "No Authorization Server Metadata resolved (PRM or origin).",
+    "DELETE session -> HTTP 405"
+  ],
+  "summary": {
+    "HAS_GAP": 4,
+    "NO_GAP": 4,
+    "NOT_APPLICABLE": 3
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "REQUEST: POST https://mcp.justpublish.ai/ (JSON-RPC tools/list) with NO Authorization header Mcp-Session-Id: b7bf6a93bc6d6b59677efe60a4597c0a\nRESPONSE: HTTP 200\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"9f7572c0-23d4-4d14-baca-012f9d5e15ce\",\"result\":{\"tools\":[{\"name\":\"deploy\",\"annotations\":{\"title\":\"Publish a website\",\"readOnlyHint\":false,\"destructiveHint\":false,\"openWorldHint\":true},\"description\":\"Put a website live at a public URL. Use this when the user wants to publish, launch, or get a page online - e.g. 'I need a website', 'put up a page for my bu \u2026[truncated]",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 3 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: GET https://mcp.justpublish.ai/ with NO Authorization header\nRESPONSE: HTTP 405\nMethod Not Allowed - POST a JSON-RPC body to this endpoint",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": "Endpoint is https and its certificate validated."
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://mcp.justpublish.ai/ (JSON-RPC tools/list) with NO Authorization header Mcp-Session-Id: b7bf6a93bc6d6b59677efe60a4597c0a\nRESPONSE: HTTP 200\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"0cfd946f-1280-43d1-a73c-ce42338bbfc5\",\"result\":{\"tools\":[{\"name\":\"deploy\",\"annotations\":{\"title\":\"Publish a website\",\"readOnlyHint\":false,\"destructiveHint\":false,\"openWorldHint\":true},\"description\":\"Put a website live at a public URL. Use this when the user wants to publish, launch, or get a page online - e.g. 'I need a website', 'put up a page for my bu \u2026[truncated]",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "No authentication challenge to inspect (HTTP 200 is not an authentication challenge), so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "PRM GET https://mcp.justpublish.ai/.well-known/oauth-protected-resource -> HTTP 404; No usable RFC 9728 Protected Resource Metadata document (tried: https://mcp.justpublish.ai/.well-known/oauth-protected-resource).; AS metadata GET https://mcp.justpublish.ai/.well-known/oauth-authorization-server -> HTTP 404; AS metadata GET https://mcp.justpublish.ai/.well-known/openid-configuration -> HTTP 404",
+      "spec_reference": "MCP Authorization: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers. RFC 9728 \u00a73.1 locates it by inserting the well-known suffix before the resource path.",
+      "notes": "No RFC 9728 metadata document at either the path-inserted or the origin well-known location."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "Mcp-Session-Id header present (len=32)",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "Session conveyed via header per Streamable HTTP."
+    },
+    {
+      "gap_id": "predictable-session-id",
+      "name": "Predictable session identifier",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "observed session ids: ['b7bf6a93bc6d6b59677efe60a4597c0a', '020c8dd035de636354b9aa8235f0a6dd', '21b0db659ffc58d764f8575e19b47e40', 'ca0540cb2ec778a401d7d37149160555', 'a536568de29977ae262aeef46fd59347']",
+      "spec_reference": "MCP Transports \u00a7Session Management: session id SHOULD be globally unique and cryptographically secure. Security Best Practices \u00a7Session Hijacking: servers MUST use secure, non-deterministic session IDs; avoid predictable/sequential ones.",
+      "notes": "5 distinct session ids, weakest 32 chars of lowercase hex (16 symbols) \u2248 128 bits, no constant/sequential pattern (checked determinism, counter sequences, shared-prefix counters, and entropy)."
+    },
+    {
+      "gap_id": "origin-not-validated",
+      "name": "Origin header not validated (DNS rebinding)",
+      "verdict": "HAS_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: POST https://mcp.justpublish.ai/ (JSON-RPC initialize) with NO Authorization header Origin: https://evil.attacker.example\nRESPONSE: HTTP 200\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"db3c51b2-03ac-45b1-9344-58c43e0f5707\",\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{},\"resources\":{}},\"serverInfo\":{\"name\":\"Just Publish\",\"title\":\"Just Publish\",\"version\":\"0.1.11\",\"description\":\"Publish the website you built with AI to a live public URL, straight from chat, with no setup.\",\"websiteUrl\":\"https://justpublish.ai\",\"icons\" \u2026[truncated]",
+      "spec_reference": "MCP Transports \u00a7Security Warning: servers MUST validate the Origin header on all incoming connections to prevent DNS rebinding attacks.",
+      "notes": "initialize from forged Origin 'https://evil.attacker.example' succeeded (HTTP 200 with a valid result) \u2014 the server accepts cross-origin requests it should reject."
+    },
+    {
+      "gap_id": "cors-misconfiguration",
+      "name": "CORS reflects arbitrary origin with credentials",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "OPTIONS https://mcp.justpublish.ai/ with NO Authorization header Origin: https://evil.attacker.example\nAccess-Control-Allow-Origin: *; Allow-Credentials: False",
+      "spec_reference": "Not in the MCP spec. General web security: reflecting an arbitrary Origin in Access-Control-Allow-Origin together with Access-Control-Allow-Credentials: true lets any website make credentialed cross-origin calls.",
+      "notes": "Wildcard Access-Control-Allow-Origin: browsers will not send credentials to it, so no credentialed cross-origin theft is possible. Note that if this server needs no authentication at all (see no-authentication-remote), any web page can still call it directly."
+    },
+    {
+      "gap_id": "auth-endpoints-not-https",
+      "name": "OAuth endpoint not served over HTTPS",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "high",
+      "evidence": "",
+      "spec_reference": "OAuth 2.1 \u00a71.5 & MCP Authorization \u00a72.8: all OAuth protocol URLs MUST use https (loopback exempt). RFC 8414 mandates https for issuer / jwks_uri / metadata path.",
+      "notes": "No authorization-server URLs or AS-metadata endpoints were discovered, so there is nothing to check for https."
+    },
+    {
+      "gap_id": "missing-as-metadata",
+      "name": "Missing OAuth Authorization Server Metadata (RFC 8414)",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "No authorization server is advertised (no PRM authorization_servers) and the server's own origin exposes no RFC 8414 metadata (overlaps #4 missing-PRM)",
+      "spec_reference": "MCP Authorization \u00a72.3.2: clients MUST follow RFC 8414 to obtain AS metadata; authorization servers MUST provide it. Distinct from RFC 9728 PRM (#4).",
+      "notes": "No authorization server is advertised (no PRM authorization_servers) and the server's own origin exposes no RFC 8414 metadata (overlaps #4 missing-PRM) \u2014 required under 2025-06-18."
+    },
+    {
+      "gap_id": "implicit-flow-enabled",
+      "name": "Implicit grant advertised (forbidden by OAuth 2.1)",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "high",
+      "evidence": "",
+      "spec_reference": "OAuth 2.1 \u00a71.8 removes the implicit grant; MCP \u00a72.3 mandates OAuth 2.1. RFC 8414: response_types_supported 'token' or grant_types_supported 'implicit' advertise it.",
+      "notes": "No usable AS metadata resolved, so advertised grant/response types are unknown (see missing-as-metadata; a document whose issuer does not match MUST NOT be used per RFC 8414 \u00a73.3)."
+    }
+  ],
+  "oauth": {
+    "prm_url": "https://mcp.justpublish.ai/.well-known/oauth-protected-resource",
+    "prm_source": "",
+    "authorization_servers": [],
+    "as_metadata_url": "",
+    "as_metadata_usable": false,
+    "unresolved_servers": [],
+    "blocked_urls": [],
+    "external_hosts_contacted": []
+  }
+}

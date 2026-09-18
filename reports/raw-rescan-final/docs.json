@@ -1,0 +1,153 @@
+{
+  "report_version": 2,
+  "target": "https://auteng.ai/mcp/docs",
+  "reachable": true,
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "auteng-docs",
+    "version": "1.26.0"
+  },
+  "detectors_run": [
+    "no-authentication-remote",
+    "no-tls-transport",
+    "missing-www-authenticate",
+    "missing-protected-resource-metadata",
+    "session-id-in-url",
+    "predictable-session-id",
+    "origin-not-validated",
+    "cors-misconfiguration",
+    "auth-endpoints-not-https",
+    "missing-as-metadata",
+    "implicit-flow-enabled"
+  ],
+  "tiers_selected": "all",
+  "excluded": [
+    "open-dcr"
+  ],
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-06-18, session=no",
+    "PRM GET https://auteng.ai/.well-known/oauth-protected-resource/mcp/docs -> HTTP 403",
+    "PRM GET https://auteng.ai/.well-known/oauth-protected-resource -> HTTP 403",
+    "No usable RFC 9728 Protected Resource Metadata document (tried: https://auteng.ai/.well-known/oauth-protected-resource/mcp/docs, https://auteng.ai/.well-known/oauth-protected-resource).",
+    "AS metadata GET https://auteng.ai/.well-known/oauth-authorization-server -> HTTP 403",
+    "AS metadata GET https://auteng.ai/.well-known/openid-configuration -> HTTP 403",
+    "No Authorization Server Metadata resolved (PRM or origin)."
+  ],
+  "summary": {
+    "HAS_GAP": 3,
+    "NO_GAP": 3,
+    "NOT_APPLICABLE": 4,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "critical",
+      "evidence": "REQUEST: POST https://auteng.ai/mcp/docs (JSON-RPC tools/list) with NO Authorization header\nRESPONSE: HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"201277c8-61f9-420c-b864-8dd8532c82e0\",\"result\":{\"tools\":[{\"name\":\"auteng_publish_markdown\",\"description\":\"\\nPublish markdown as a publicly shareable AutEng document.\\n\\nProxies to backend endpoint:\\nPOST /api/tools/docs/publish-markdown/\\n\",\"inputSchema\":{\"properties\":{\"markdown\":{\"title\":\"Markdown\",\"type\":\"string\"},\"title\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"defau \u2026[truncated]",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 7 tool(s) without any credential."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: GET https://auteng.ai/mcp/docs with NO Authorization header\nRESPONSE: HTTP 406\n{\"jsonrpc\":\"2.0\",\"id\":\"server-error\",\"error\":{\"code\":-32600,\"message\":\"Not Acceptable: Client must accept text/event-stream\"}}",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": "Endpoint is https and its certificate validated."
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://auteng.ai/mcp/docs (JSON-RPC tools/list) with NO Authorization header\nRESPONSE: HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"5c6e5227-d74a-4e1e-b91b-7bc0b12c18a8\",\"result\":{\"tools\":[{\"name\":\"auteng_publish_markdown\",\"description\":\"\\nPublish markdown as a publicly shareable AutEng document.\\n\\nProxies to backend endpoint:\\nPOST /api/tools/docs/publish-markdown/\\n\",\"inputSchema\":{\"properties\":{\"markdown\":{\"title\":\"Markdown\",\"type\":\"string\"},\"title\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"defau \u2026[truncated]",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "No authentication challenge to inspect (HTTP 200 is not an authentication challenge), so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "PRM GET https://auteng.ai/.well-known/oauth-protected-resource/mcp/docs -> HTTP 403; PRM GET https://auteng.ai/.well-known/oauth-protected-resource -> HTTP 403; No usable RFC 9728 Protected Resource Metadata document (tried: https://auteng.ai/.well-known/oauth-protected-resource/mcp/docs, https://auteng.ai/.well-known/oauth-protected-resource).; AS metadata GET https://auteng.ai/.well-known/oauth-authorization-server -> HTTP 403",
+      "spec_reference": "MCP Authorization: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers. RFC 9728 \u00a73.1 locates it by inserting the well-known suffix before the resource path.",
+      "notes": "No RFC 9728 metadata document at either the path-inserted or the origin well-known location."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://auteng.ai/mcp/docs (JSON-RPC initialize) with NO Authorization header\nRESPONSE: HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"1845209f-8719-4cb7-9123-3b9195bd4c6f\",\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"experimental\":{},\"prompts\":{\"listChanged\":false},\"resources\":{\"subscribe\":false,\"listChanged\":false},\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"auteng-docs\",\"version\":\"1.26.0\"},\"instructions\":\"AutEng Docs \u2014 document workspace for AI agents.\\n\\nTools:\\n- auteng_publish_ma \u2026[truncated]\n--- SSE probe ---\nREQUEST: GET https://auteng.ai/mcp/docs with NO Authorization header\nRESPONSE: HTTP 200\n",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed. The server may be stateless (no session at all), in which case this gap cannot apply."
+    },
+    {
+      "gap_id": "predictable-session-id",
+      "name": "Predictable session identifier",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "",
+      "spec_reference": "MCP Transports \u00a7Session Management: session id SHOULD be globally unique and cryptographically secure. Security Best Practices \u00a7Session Hijacking: servers MUST use secure, non-deterministic session IDs; avoid predictable/sequential ones.",
+      "notes": "Server answered initialize but issued no Mcp-Session-Id header, so there is no stateful session identifier to assess. (Protocol-level sessions were removed in MCP 2026-07-28, so this is expected on current servers.)"
+    },
+    {
+      "gap_id": "origin-not-validated",
+      "name": "Origin header not validated (DNS rebinding)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "forged Origin: REQUEST: POST https://auteng.ai/mcp/docs (JSON-RPC initialize) with NO Authorization header Origin: https://evil.attacker.example\nRESPONSE: HTTP 403\nInvalid Origin header\n--- control (no Origin) -> HTTP 200 ---",
+      "spec_reference": "MCP Transports \u00a7Security Warning: servers MUST validate the Origin header on all incoming connections to prevent DNS rebinding attacks.",
+      "notes": "Forged Origin rejected with 403 while the same request without an Origin header was not \u2014 the server validates Origin, as MCP Transports requires (2026-07-28 specifies 403 for an invalid Origin)."
+    },
+    {
+      "gap_id": "cors-misconfiguration",
+      "name": "CORS reflects arbitrary origin with credentials",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "no Access-Control-Allow-Origin in response to Origin https://evil.attacker.example",
+      "spec_reference": "Not in the MCP spec. General web security: reflecting an arbitrary Origin in Access-Control-Allow-Origin together with Access-Control-Allow-Credentials: true lets any website make credentialed cross-origin calls.",
+      "notes": "Server grants no cross-origin access (safe; MCP clients aren't browsers)."
+    },
+    {
+      "gap_id": "auth-endpoints-not-https",
+      "name": "OAuth endpoint not served over HTTPS",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "high",
+      "evidence": "",
+      "spec_reference": "OAuth 2.1 \u00a71.5 & MCP Authorization \u00a72.8: all OAuth protocol URLs MUST use https (loopback exempt). RFC 8414 mandates https for issuer / jwks_uri / metadata path.",
+      "notes": "No authorization-server URLs or AS-metadata endpoints were discovered, so there is nothing to check for https."
+    },
+    {
+      "gap_id": "missing-as-metadata",
+      "name": "Missing OAuth Authorization Server Metadata (RFC 8414)",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "No authorization server is advertised (no PRM authorization_servers) and the server's own origin exposes no RFC 8414 metadata (overlaps #4 missing-PRM)",
+      "spec_reference": "MCP Authorization \u00a72.3.2: clients MUST follow RFC 8414 to obtain AS metadata; authorization servers MUST provide it. Distinct from RFC 9728 PRM (#4).",
+      "notes": "No authorization server is advertised (no PRM authorization_servers) and the server's own origin exposes no RFC 8414 metadata (overlaps #4 missing-PRM) \u2014 required under 2025-06-18."
+    },
+    {
+      "gap_id": "implicit-flow-enabled",
+      "name": "Implicit grant advertised (forbidden by OAuth 2.1)",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "high",
+      "evidence": "",
+      "spec_reference": "OAuth 2.1 \u00a71.8 removes the implicit grant; MCP \u00a72.3 mandates OAuth 2.1. RFC 8414: response_types_supported 'token' or grant_types_supported 'implicit' advertise it.",
+      "notes": "No usable AS metadata resolved, so advertised grant/response types are unknown (see missing-as-metadata; a document whose issuer does not match MUST NOT be used per RFC 8414 \u00a73.3)."
+    }
+  ],
+  "oauth": {
+    "prm_url": "https://auteng.ai/.well-known/oauth-protected-resource",
+    "prm_source": "",
+    "authorization_servers": [],
+    "as_metadata_url": "",
+    "as_metadata_usable": false,
+    "unresolved_servers": [],
+    "blocked_urls": [],
+    "external_hosts_contacted": []
+  }
+}

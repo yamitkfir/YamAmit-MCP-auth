@@ -42,8 +42,20 @@ ALL_DETECTORS: list[type[Detector]] = [
 ]
 
 
-# Gap ids of detectors that mutate target state — `mcpauth scan --safe` skips these.
+# Gap ids of detectors that mutate target state. These are OFF unless the caller passes
+# `--unsafe-writes`: the tool is pointed at other people's live servers, so a scan must not
+# change anything by default.
 WRITE_DETECTORS: set[str] = {cls.gap_id for cls in ALL_DETECTORS if cls.has_side_effects}
+
+
+def known_gap_ids() -> set[str]:
+    """Every registered gap id — used to reject a mistyped `--exclude`."""
+    return {cls.gap_id for cls in ALL_DETECTORS}
+
+
+def known_tiers() -> set[int]:
+    """Every tier that actually has detectors — used to reject a mistyped `--tier`."""
+    return {cls.tier for cls in ALL_DETECTORS}
 
 
 def build_detectors(
