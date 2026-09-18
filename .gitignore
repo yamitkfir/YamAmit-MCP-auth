@@ -1,0 +1,20 @@
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environment (recreate with `uv sync`)
+.venv/
+
+# Test / tooling caches
+.pytest_cache/
+.coverage
+
+# Editor and OS cruft
+.vscode/
+.DS_Store
+
+# Local agent settings (machine-specific)
+.claude/settings.local.json
