@@ -9,9 +9,12 @@ order or in parallel.
 from __future__ import annotations
 
 import enum
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
+
+from .netguard import is_loopback_host
 
 if TYPE_CHECKING:
     from .oauth import OAuthDiscovery
@@ -75,8 +78,7 @@ class TargetSpec:
 
     @property
     def is_loopback(self) -> bool:
-        h = self.host.lower()
-        return h in ("localhost", "127.0.0.1", "::1") or h.endswith(".localhost")
+        return is_loopback_host(self.host)
 
     @property
     def is_http_transport(self) -> bool:
@@ -99,14 +101,46 @@ class ProbeContext:
     initialize_ok: bool = False           # did unauthenticated initialize succeed?
     oauth: "OAuthDiscovery | None" = None  # PRM->AS metadata chain (fetched once, Tier-2+)
     discovery_notes: list[str] = field(default_factory=list)
+    reachable: bool = False               # did ANY request to the target complete?
+    # Session id the server handed back on `initialize`, for revisions 2025-03-26 through
+    # 2025-11-25 that use one. It is plumbing, NOT a credential, so detectors carry it while
+    # still sending no Authorization header — otherwise a wide-open server that merely wants
+    # a session id answers 400 and gets graded "unknown" on the most important check.
+    session_id: str | None = None
+    www_authenticate: str = ""             # challenge seen during discovery, if any
 
-    # Spec revision that makes 9728/8707 audience rules MANDATORY.
+    def session_headers(self) -> dict[str, str]:
+        """Headers a detector should carry to look like a normal client mid-conversation.
+
+        Deliberately contains no `Authorization`: the point of most of these checks is what
+        the server does for a caller who has *not* logged in.
+        """
+        return {"Mcp-Session-Id": self.session_id} if self.session_id else {}
+
+    # First spec revision that makes the RFC 9728 / 8707 audience rules MANDATORY.
     SPEC_STRICT = "2025-06-18"
 
     @property
     def targets_strict_spec(self) -> bool:
-        """True if the server negotiated the revision where 9728/audience are MUSTs.
+        """True if the server negotiated a revision where 9728/audience are MUSTs.
+
+        MCP revisions are `YYYY-MM-DD` strings, so they sort chronologically and the test
+        is **`>=`, not `==`**. That matters: every revision after 2025-06-18 keeps the RFC
+        9728 requirement (under 2026-07-28 it is an unconditional MUST), so comparing
+        against one hardcoded date would let precisely the servers that keep up with the
+        spec off the hook, and print a note claiming they negotiated something older.
 
         When no version is negotiated the spec says assume 2025-03-26 (the weaker bar).
+        An unparseable value is treated as not-strict rather than trusted.
         """
-        return self.protocol_version == self.SPEC_STRICT
+        return _spec_at_least(self.protocol_version, self.SPEC_STRICT)
+
+
+_SPEC_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _spec_at_least(version: str | None, floor: str) -> bool:
+    """Chronological comparison of two MCP revision strings, tolerant of junk."""
+    if not version or not _SPEC_DATE.match(version):
+        return False
+    return version >= floor
