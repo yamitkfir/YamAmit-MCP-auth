@@ -1,0 +1,21 @@
+# open-dcr LIVE run (writes performed, with RFC 7592 cleanup)
+
+Ran open-dcr against 4 server(s). **4 have open registration.**
+
+## ⚠️ 4 client(s) could NOT be auto-deleted — MANUAL CLEANUP NEEDED
+
+| server | note |
+|---|---|
+| dock | Registration succeeded with no initial access token — anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. ⚠ MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='dock_client_147f8c0e34e94b2c19c2e730c6d5aeec') cannot be deleted programmatically — deprovision it manually if the server is not yours. |
+| ca-rate-filings | Registration succeeded with no initial access token — anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. ⚠ MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='4b4e081b-bcea-43c0-8cec-4af0a5160695') cannot be deleted programmatically — deprovision it manually if the server is not yours. |
+| gondola | Registration succeeded with no initial access token — anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. ⚠ MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='gond_mcp_do7tStvN3QTKtjJfHzBEVhtUCsg8YWsV') cannot be deleted programmatically — deprovision it manually if the server is not yours. |
+| switch | Registration succeeded with no initial access token — anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. ⚠ MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='mcpc_NI68KEmQ_i6x49tvj3J_cA') cannot be deleted programmatically — deprovision it manually if the server is not yours. |
+
+## All results
+
+| server | verdict | notes |
+|---|---|---|
+| ca-rate-filings | HAS_GAP | Registration succeeded with no initial access token — anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. ⚠ MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='4b4e081b-bcea-43c0-8cec-4af0a5160695') cannot be deleted programmatically — deprovision it manually if the server is not yours. |
+| dock | HAS_GAP | Registration succeeded with no initial access token — anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. ⚠ MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='dock_client_147f8c0e34e94b2c19c2e730c6d5aeec') cannot be deleted programmatically — deprovision it manually if the server is not yours. |
+| gondola | HAS_GAP | Registration succeeded with no initial access token — anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. ⚠ MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='gond_mcp_do7tStvN3QTKtjJfHzBEVhtUCsg8YWsV') cannot be deleted programmatically — deprovision it manually if the server is not yours. |
+| switch | HAS_GAP | Registration succeeded with no initial access token — anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy (#16); consider an allowlist or pre-shared registration token. ⚠ MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='mcpc_NI68KEmQ_i6x49tvj3J_cA') cannot be deleted programmatically — deprovision it manually if the server is not yours. |
