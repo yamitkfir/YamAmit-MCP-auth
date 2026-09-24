@@ -220,6 +220,59 @@ def test_ssrf_guard_allows_the_scan_target_itself():
     assert is_ssrf_risk("http://localhost:9110/token", "http://127.0.0.1:9110/mcp") == ""
 
 
+@pytest.mark.parametrize("addresses,blocked", [
+    (["93.184.216.34"], False),                    # ordinary public host
+    (["127.0.0.1"], True),                         # this machine
+    (["10.1.2.3"], True),                          # RFC 1918
+    (["169.254.169.254"], True),                   # cloud credential service
+    (["::1"], True),
+    (["93.184.216.34", "10.1.2.3"], True),         # split horizon: any answer is enough
+])
+def test_resolved_address_reason_judges_what_a_name_points_at(addresses, blocked):
+    """The second containment layer, which the string predicates above cannot provide.
+
+    `https://intranet.example.com/register` is indistinguishable from any public URL until
+    it is resolved, so this is the only check that can catch it.
+    """
+    from mcpauth.netguard import resolved_address_reason
+
+    reason = resolved_address_reason("some.name.test", addresses, "mcp.example.com")
+    assert bool(reason) is blocked, reason
+
+
+@pytest.mark.parametrize("address", [
+    "100.64.0.1",          # carrier-grade NAT: neither `is_private` nor `is_reserved`
+    "100.127.255.254",
+    "198.18.0.1",          # benchmarking range
+    "::ffff:10.0.0.1",     # IPv4-mapped IPv6
+    "fd00::abcd",          # unique-local IPv6
+])
+def test_special_purpose_ranges_count_as_internal(address):
+    """Named checks alone missed CGNAT, which routes inside an ISP or container network."""
+    from mcpauth.netguard import is_internal_host
+
+    assert is_internal_host(address) is True
+
+
+@pytest.mark.parametrize("address", ["93.184.216.34", "1.1.1.1", "2606:4700::1111"])
+def test_genuinely_public_addresses_are_not_internal(address):
+    """The catch-all must not start refusing the public internet."""
+    from mcpauth.netguard import is_internal_host
+
+    assert is_internal_host(address) is False
+
+
+def test_resolved_address_reason_exempts_only_the_target_host():
+    """Scanning a sandbox needs the exemption; it must not extend past that one host."""
+    from mcpauth.netguard import resolved_address_reason
+
+    # The target itself, by name or by literal, may resolve to loopback.
+    assert resolved_address_reason("localhost", ["127.0.0.1"], "localhost") == ""
+    assert resolved_address_reason("localhost", ["127.0.0.1"], "127.0.0.1") == ""
+    # Any other name pointing at the same machine is still refused.
+    assert resolved_address_reason("evil.test", ["127.0.0.1"], "127.0.0.1") != ""
+
+
 @pytest.mark.parametrize("url", [
     "http://169.254.169.254/latest/meta-data/",
     "http://192.168.1.1/authorize",

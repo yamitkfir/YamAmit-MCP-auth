@@ -14,11 +14,15 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import socket
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 import aiohttp
+
+from .netguard import BlockedDestination, resolved_address_reason
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
 USER_AGENT = "mcpauth-prober/0.1"
@@ -47,6 +51,14 @@ class HttpResult:
     final_url: str = ""            # where we ended up, if redirected
     truncated: bool = False        # body hit the read cap
     tls_failure: bool = False      # transport error was a certificate/TLS problem
+    # True when the transport error happened while *establishing* the connection, so the
+    # request bytes provably never reached the server. Only meaningful when `ok` is False.
+    # `open-dcr` needs this distinction: a POST that failed to connect created nothing,
+    # while one that timed out mid-reply may have registered a real client we can no longer
+    # name. Treating those the same either invents an obligation or hides one.
+    connect_failed: bool = False
+    # True when the destination guard aborted the connection (see netguard layer 2).
+    blocked: bool = False
 
     def request_line(self) -> str:
         """One-line description of what we sent, for the evidence trail."""
@@ -112,6 +124,40 @@ def _get_ci(headers: dict[str, str], name: str) -> str:
     return ""
 
 
+class _ContainedResolver(aiohttp.abc.AbstractResolver):
+    """DNS resolver that refuses to hand back an internal address.
+
+    This is where the containment promise is actually kept. Every URL the scanner fetches
+    after the first one is chosen by the server being scanned, and `netguard`'s string
+    predicates cannot tell `https://intranet.example.com/register` from any other public
+    URL — only the resolved address can. Checking here rather than before the request also
+    closes the DNS-rebinding window: aiohttp resolves at connect time, so a name validated
+    a moment earlier could already point somewhere else.
+
+    IP literals never reach a resolver — aiohttp short-circuits them — which is fine,
+    because `netguard.ssrf_reason` already rejects those before the request is made. This
+    class exists for the case that guard is blind to: names.
+    """
+
+    def __init__(self, target_host: str, inner: aiohttp.abc.AbstractResolver | None = None):
+        self._target_host = target_host
+        self._inner = inner or aiohttp.DefaultResolver()
+
+    async def resolve(
+        self, host: str, port: int = 0, family: socket.AddressFamily = socket.AF_INET
+    ) -> list[aiohttp.abc.ResolveResult]:
+        results = await self._inner.resolve(host, port, family)
+        reason = resolved_address_reason(
+            host, [r["host"] for r in results], self._target_host
+        )
+        if reason:
+            raise BlockedDestination(reason)
+        return results
+
+    async def close(self) -> None:
+        await self._inner.close()
+
+
 class Probe:
     """Shared HTTP client.
 
@@ -121,6 +167,11 @@ class Probe:
     forge every verdict. A certificate failure is now surfaced as a *finding* (see
     `_is_tls_failure`) instead of being silently tolerated. `insecure_tls=True` restores
     the old behaviour for deliberately self-signed local sandboxes.
+
+    Pass `target_url` — every caller that scans something should — to enable the
+    connect-time destination guard (`_ContainedResolver`). Without it no host is exempt,
+    so *any* name resolving to an internal address is refused; that is the safe default,
+    but it also means a sandbox reached by name would be blocked.
     """
 
     def __init__(
@@ -128,6 +179,9 @@ class Probe:
         timeout: float = 12.0,
         *,
         insecure_tls: bool = False,
+        # The URL the operator asked us to scan. Its host is the one destination allowed to
+        # resolve to an internal address, mirroring `netguard.ssrf_reason`'s exemption.
+        target_url: str | None = None,
         # A real tools/list is routinely larger than the old 64 KB cap — one scanned server
         # answered with 91,703 bytes. 1 MB still bounds memory per request, and
         # `truncated_success` salvages a verdict from anything that exceeds even this.
@@ -135,10 +189,20 @@ class Probe:
         # `read(cap)` clipped bodies far below it while reporting them complete.)
         max_body_bytes: int = 1_000_000,
     ):
-        self._timeout = aiohttp.ClientTimeout(total=timeout)
+        # `sock_connect` is set as well as `total`, and must stay strictly below it. With
+        # only a total budget, aiohttp's connect-phase wrapper never fires: the shared timer
+        # cancels whatever await is in flight and surfaces a bare `TimeoutError` whatever the
+        # phase, so `_is_connect_failure` could not tell a dead TCP handshake from a lost
+        # reply. `open-dcr` then had to assume its registration POST might have landed, and
+        # demanded manual cleanup for hosts it had never connected to. A separate connect
+        # budget yields `ConnectionTimeoutError`, which is unambiguous.
+        self._timeout = aiohttp.ClientTimeout(
+            total=timeout, sock_connect=min(timeout * 0.6, 10.0)
+        )
         self._session: aiohttp.ClientSession | None = None
         self._insecure_tls = insecure_tls
         self._max_body_bytes = max_body_bytes
+        self._target_host = (urlsplit(target_url or "").hostname or "").lower()
         # Set by the runner once `initialize` tells us what the server settled on. Every
         # later request must advertise the *negotiated* revision, not the one we opened
         # with; keeping it here means each detector gets it right without threading the
@@ -148,7 +212,10 @@ class Probe:
     async def __aenter__(self) -> "Probe":
         self._session = aiohttp.ClientSession(
             timeout=self._timeout,
-            connector=aiohttp.TCPConnector(ssl=not self._insecure_tls),
+            connector=aiohttp.TCPConnector(
+                ssl=not self._insecure_tls,
+                resolver=_ContainedResolver(self._target_host),
+            ),
         )
         return self
 
@@ -250,6 +317,8 @@ class Probe:
             return HttpResult(
                 ok=False, error=err, url=url, method=method, rpc_method=rpc_method,
                 request_headers=dict(hdrs), tls_failure=_is_tls_failure(err),
+                connect_failed=_is_connect_failure(e),
+                blocked=isinstance(e, BlockedDestination),
             )
 
     async def mcp_call(
@@ -343,6 +412,31 @@ _TLS_ERROR_MARKERS = (
     "self-signed certificate",
     "hostname mismatch",
 )
+
+
+def _is_connect_failure(exc: BaseException) -> bool:
+    """True if the exchange died while *establishing* the connection.
+
+    The point is one distinction that matters for the only detector that writes: whether
+    the request bytes could have reached the server. A DNS failure, a refused connection, a
+    rejected certificate or a blocked destination all happen before anything is sent, so no
+    registration can have been created. A read timeout or a mid-reply reset is the opposite
+    case — the POST may well have landed and created a client we can no longer name — and
+    `open-dcr` has to report that as an unresolved obligation rather than as nothing.
+
+    Classified by exception type rather than by matching the message, because the message
+    is aiohttp's to change. `ClientConnectorError` covers DNS, refusal and TLS (its
+    `ClientConnectorDNSError` / `ClientConnectorSSLError` / `ClientConnectorCertificateError`
+    subclasses), and `ConnectionTimeoutError` is a timeout on the connect itself — as
+    opposed to `SocketTimeoutError`, which is a timeout waiting for the reply and therefore
+    NOT a connect failure. Anything unrecognised is treated as "may have been sent", so an
+    unfamiliar error errs toward declaring an obligation rather than hiding one.
+    """
+    if isinstance(exc, BlockedDestination):
+        return True
+    if isinstance(exc, aiohttp.ConnectionTimeoutError):
+        return True
+    return isinstance(exc, aiohttp.ClientConnectorError)
 
 
 def _is_tls_failure(error: str) -> bool:

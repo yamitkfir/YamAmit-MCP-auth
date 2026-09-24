@@ -25,6 +25,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -42,6 +44,13 @@ RAW_DIR = ROOT / "raw_dcr"
 # servers. A live run now also refuses to clobber an existing report.
 DRY_REPORT = ROOT / "dcr_shortlist.md"
 LIVE_REPORT = ROOT / "dcr_scan.md"
+
+# Append-only, flushed and fsynced per line, written DURING the run. The reports below are
+# only produced after every server has been probed, so an interruption — Ctrl-C, SIGTERM,
+# OOM, a closed laptop — used to discard every client_id created so far. On a run that
+# creates dozens of registrations nobody can delete, that record is the only way to tell an
+# operator which clients we left on their server. This file is never truncated.
+JOURNAL = RAW_DIR / "write_journal.jsonl"
 
 PER_SERVER_TIMEOUT = 25.0   # seconds for the whole per-server probe
 DELAY_BETWEEN = 2.0         # politeness gap between servers in a live run
@@ -62,7 +71,7 @@ def load_endpoints(only: set[str] | None) -> list[tuple[str, str]]:
 async def discover_one(name: str, url: str) -> dict:
     """READ-ONLY: does this endpoint advertise a registration_endpoint?"""
     try:
-        async with Probe(timeout=15) as probe:
+        async with Probe(timeout=15, target_url=url) as probe:
             disc = await asyncio.wait_for(discover_oauth(probe, url), timeout=PER_SERVER_TIMEOUT)
     except Exception as e:  # noqa: BLE001
         return {"name": name, "url": url, "reachable": False, "error": f"{type(e).__name__}: {e}"}
@@ -75,31 +84,94 @@ async def discover_one(name: str, url: str) -> dict:
     }
 
 
+def journal_write(record: dict) -> None:
+    """Append one record about something we created, and make it durable immediately.
+
+    Opened, flushed, fsynced and closed per call. That is deliberately wasteful: the whole
+    point is that the line survives whatever kills the process on the very next statement,
+    so buffering it would defeat the purpose.
+    """
+    RAW_DIR.mkdir(exist_ok=True)
+    with JOURNAL.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"ts": time.time(), **record}, sort_keys=True) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def _could_have_written(registration_endpoint) -> bool:
+    """True if a registration POST was even possible when the probe died.
+
+    With no `registration_endpoint`, `OpenDcr` had nowhere to POST and returns
+    NOT_APPLICABLE before sending anything, so flagging cleanup would invent an obligation
+    that can never be discharged. `reports/dcr_scan.md` over-reports by exactly one row for
+    this reason.
+    """
+    return isinstance(registration_endpoint, str) and bool(registration_endpoint)
+
+
+def _journal_abort(url: str, registration_endpoint, exc: BaseException) -> None:
+    """Record an aborted probe, if a write could have happened, before unwinding."""
+    if not _could_have_written(registration_endpoint):
+        return
+    journal_write({
+        "gap_id": "open-dcr", "target": url,
+        "registration_endpoint": registration_endpoint, "client_id": None,
+        "stage": "aborted-outcome-unknown",
+        "detail": f"{type(exc).__name__}: {exc}",
+    })
+
+
 async def dcr_one(name: str, url: str) -> dict:
     """WRITE: run only open-dcr (registers + self-deletes) against one server."""
     det = OpenDcr()
     registration_endpoint = None
     try:
-        async with Probe(timeout=15) as probe:
-            ctx = ProbeContext(target=TargetSpec(url=url), probe=probe)
+        async with Probe(timeout=15, target_url=url) as probe:
+            ctx = ProbeContext(
+                target=TargetSpec(url=url), probe=probe, write_journal=journal_write
+            )
             ctx.oauth = await asyncio.wait_for(discover_oauth(probe, url), timeout=PER_SERVER_TIMEOUT)
             registration_endpoint = (ctx.oauth.as_metadata or {}).get("registration_endpoint")
             finding = await asyncio.wait_for(det.detect(ctx), timeout=PER_SERVER_TIMEOUT)
+    except asyncio.CancelledError as e:
+        # Ctrl-C must STOP the run. On Python 3.11+ the first SIGINT arrives here as one
+        # `CancelledError`, so catching it alongside `Exception` and returning a row
+        # consumed the cancellation outright: `run_live` carried on and registered clients
+        # on every remaining third-party server, and the operator saw a run that looked
+        # like it completed. Record what we owe, then re-raise so the loop actually ends.
+        _journal_abort(url, registration_endpoint, e)
+        raise
     except Exception as e:  # noqa: BLE001
-        # A timeout can fire *during* RFC 7592 cleanup, after the client was created. The
-        # old code returned no `cleanup_failed` flag here, so a run that created a client
-        # and then aborted its own cleanup reported "no manual cleanup needed" and lost the
-        # client id entirely. Assume the worst instead.
-        return {
-            "name": name, "url": url, "verdict": "ERROR",
-            "registration_endpoint": registration_endpoint,
-            "notes": (
+        # A timeout can fire *during* RFC 7592 cleanup, after the client was created, so a
+        # run that created a client and then aborted its own cleanup must not report "no
+        # manual cleanup needed". But only claim an obligation when a write was actually
+        # possible: with no `registration_endpoint`, `OpenDcr` had nowhere to POST and
+        # returns NOT_APPLICABLE before sending anything, so flagging cleanup here invents
+        # an obligation that can never be discharged. The committed
+        # `reports/dcr_scan.md` over-reports by exactly one row for this reason.
+        could_have_written = _could_have_written(registration_endpoint)
+        if could_have_written:
+            _journal_abort(url, registration_endpoint, e)
+            notes = (
                 f"{type(e).__name__}: {e} — this aborted mid-probe, so a client MAY have "
                 f"been created at {registration_endpoint!r} and not cleaned up. "
                 f"{_CLEANUP_FAIL_MARKER}: verify manually."
+            )
+        else:
+            notes = (
+                f"{type(e).__name__}: {e} — this aborted before any registration endpoint "
+                "was known, so no registration request can have been sent and no cleanup "
+                "is owed."
+            )
+        return {
+            "name": name, "url": url, "verdict": "ERROR",
+            "registration_endpoint": registration_endpoint,
+            "written_host": (
+                urlsplit(registration_endpoint).hostname if could_have_written else None
             ),
-            "cleanup_failed": True,
-            "cleanup_uncertain": True,
+            "notes": notes,
+            "cleanup_failed": could_have_written,
+            "cleanup_uncertain": could_have_written,
         }
     d = finding.to_dict()
     d["name"], d["url"] = name, url
@@ -128,10 +200,25 @@ async def run_dry(endpoints: list[tuple[str, str]]) -> list[dict]:
 
 async def run_live(endpoints: list[tuple[str, str]]) -> list[dict]:
     # Writes: strictly sequential with a politeness delay, no concurrency, no retry.
+    #
+    # Every row is appended to the journal as it completes, not collected and written at the
+    # end. A run over the full list takes many minutes, and the reports are produced only
+    # after the last server — so an interruption anywhere in between used to discard every
+    # result gathered so far, including the registrations that could not be deleted.
     results = []
     for i, (name, url) in enumerate(endpoints):
         print(f"  [{i+1}/{len(endpoints)}] {name} ...", flush=True)
-        results.append(await dcr_one(name, url))
+        row = await dcr_one(name, url)
+        results.append(row)
+        journal_write({
+            "gap_id": "open-dcr", "target": url, "stage": "server-complete",
+            "name": name, "verdict": row.get("verdict"),
+            "registration_endpoint": row.get("registration_endpoint"),
+            "written_host": row.get("written_host"),
+            "cleanup_failed": row.get("cleanup_failed"),
+            "client_id": None,
+            "detail": (row.get("notes") or "")[:400],
+        })
         if i < len(endpoints) - 1:
             await asyncio.sleep(DELAY_BETWEEN)
     return results
@@ -160,13 +247,18 @@ def write_dry_report(rows: list[dict]) -> list[dict]:
     unreachable = [r["name"] for r in rows if not r.get("reachable")]
     if unreachable:
         lines.append(f"\n_Unreachable during discovery: {', '.join(sorted(unreachable))}._")
-    DRY_REPORT.write_text("\n".join(lines) + "\n")
+    # Also clobber-protected. It holds no client ids, but `--only <one-server>` otherwise
+    # silently replaced the full 88-endpoint shortlist with a one-row file — losing the
+    # survey a live run is meant to be chosen from.
+    _write_without_clobbering(DRY_REPORT, "\n".join(lines) + "\n")
     return candidates
 
 
 def write_live_report(rows: list[dict]) -> list[dict]:
     RAW_DIR.mkdir(exist_ok=True)
-    (RAW_DIR / "_summary.json").write_text(json.dumps(rows, indent=2))
+    _write_without_clobbering(
+        RAW_DIR / "_summary.json", json.dumps(rows, indent=2) + "\n"
+    )
     has = [r for r in rows if r.get("verdict") == Verdict.HAS_GAP.value]
     uncleaned = [r for r in rows if r.get("cleanup_failed")]
     lines = [
@@ -200,14 +292,20 @@ def write_live_report(rows: list[dict]) -> list[dict]:
 
 
 def _write_without_clobbering(path: Path, content: str) -> None:
-    """Write `path`, preserving any existing file as `<name>.prev-<n>.md`.
+    """Write `path`, preserving any existing file as `<stem>.prev-<n><suffix>`.
 
-    The live report is the only durable record of clients left on servers we do not own, so
-    it must never be silently replaced.
+    Every durable record of clients left on servers we do not own goes through here, so none
+    of them is ever silently replaced.
+
+    The backup keeps the original file's own extension. Hardcoding `.md` — which this did —
+    meant it could only be used for the Markdown report; pointing it at `_summary.json`
+    would have produced `_summary.prev-1.md`, giving JSON content a Markdown name. That is
+    why the JSON was being overwritten in place instead, and why the first live run's four
+    `client_id`s survive only in `dcr_scan.prev-1.md`.
     """
     if path.exists():
         n = 1
-        while (backup := path.with_suffix(f".prev-{n}.md")).exists():
+        while (backup := path.with_name(f"{path.stem}.prev-{n}{path.suffix}")).exists():
             n += 1
         backup.write_text(path.read_text())
         print(f"  (previous report preserved as {backup.name})")

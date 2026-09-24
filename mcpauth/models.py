@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import enum
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
@@ -108,6 +109,13 @@ class ProbeContext:
     # a session id answers 400 and gets graded "unknown" on the most important check.
     session_id: str | None = None
     www_authenticate: str = ""             # challenge seen during discovery, if any
+    # Optional sink for durable records of anything this scan *created* on the target.
+    # Only `open-dcr` writes, and only it uses this. The library never picks a path or
+    # touches the filesystem; the caller supplies the sink. It exists because a created
+    # `client_id` used to live solely in the returned Finding, so any interruption before
+    # the report was written orphaned a real registration on someone else's server with no
+    # record of its id. See `OpenDcr._journal`.
+    write_journal: "Callable[[dict], None] | None" = None
 
     def session_headers(self) -> dict[str, str]:
         """Headers a detector should carry to look like a normal client mid-conversation.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 
 from .detectors import build_detectors
 from .models import Finding, ProbeContext, TargetSpec, Verdict
@@ -70,11 +71,17 @@ async def _handshake(ctx: ProbeContext) -> None:
 
 
 async def _release_session(ctx: ProbeContext) -> None:
-    """Tear down the session we opened, so a scan leaves no server-side state behind.
+    """Tear down the session the *handshake* opened.
 
     Streamable HTTP (2025-03-26 … 2025-11-25) says clients SHOULD release a session with an
     HTTP DELETE. Skipping it is why "every detector is read-only" was not quite true: each
     scan left sessions parked on the target.
+
+    This does NOT clear every session a scan creates, so "leaves no server-side state
+    behind" is still not true. It releases `ctx.session_id` only; #6 releases the extra ones
+    it opened; but #7 (`tier2.py`) obtains a session on its forged-Origin or control
+    `initialize` and releases nothing, and #5's fallback `initialize` can do the same. On a
+    stateful target a default scan therefore leaves one session parked.
     """
     if not ctx.session_id:
         return
@@ -117,12 +124,18 @@ async def scan(
     exclude: set[str] | None = None,
     *,
     insecure_tls: bool = False,
+    write_journal: "Callable[[dict], None] | None" = None,
 ) -> dict:
-    """Run all (selected) detectors against one target and return a report dict."""
+    """Run all (selected) detectors against one target and return a report dict.
+
+    `write_journal`, if given, is called the moment a write-performing detector creates
+    something on the target — before any cleanup is attempted — so the record survives an
+    interruption. Only `open-dcr` writes, and it only runs when the caller included it.
+    """
     target = TargetSpec(url=url)
     detectors = build_detectors(tiers, exclude)
-    async with Probe(insecure_tls=insecure_tls) as probe:
-        ctx = ProbeContext(target=target, probe=probe)
+    async with Probe(insecure_tls=insecure_tls, target_url=url) as probe:
+        ctx = ProbeContext(target=target, probe=probe, write_journal=write_journal)
         await _discover(ctx, want_oauth=any(d.needs_oauth for d in detectors))
 
         # Independent → run concurrently. Any detector crash becomes an ERROR finding.
