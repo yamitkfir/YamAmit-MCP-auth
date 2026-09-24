@@ -1,5 +1,7 @@
 # Tier-2 real-world scan (6 read-only detectors, 88 endpoints)
 
+> **SUPERSEDED.** These numbers predate two prober fixes and are wrong — notably they undercount wide-open servers. The current figures are in `README.md`, computed from `reports/raw-rescan-final/`.
+
 Run 2026-06-20. Detectors: the 6 **read-only** Tier-2 checks. `open-dcr` (#12) was
 **excluded** because it performs a write (a real OAuth client registration) — not run
 against third-party servers without explicit approval. Command per endpoint:
@@ -70,7 +72,9 @@ Raw JSON in `reports/raw_tier2/`; machine summary in `reports/raw_tier2/_summary
    registration (HAS_GAP)** — a real open-DCR finding, corroborating their loose posture.
    **Cleanup caveat:** none of the 4 returned RFC 7592 management fields, so the throwaway
    clients we created **could not be auto-deleted** and remain on those servers (client ids
-   recorded in `reports/dcr_scan.md`). They are inert public client registrations; deprovision
+   recorded in `reports/dcr_scan.prev-1.md` — `dcr_scan.md` was rewritten by the later
+   2026-09-21 run and lists different, additional ids for the same servers). They are inert
+   public client registrations; deprovision
    manually if contact is possible. A read-only dry-run found 50/88 servers advertise
    registration, but most are major vendors where open DCR is intentional — not run.
 

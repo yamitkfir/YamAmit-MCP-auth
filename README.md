@@ -127,13 +127,15 @@ The two angles that depended on Tier 3 are closed: *token passthrough* (a server
 
 ## Safety rules — we are pointing this at other people's live servers
 
-1. **Nothing is changed by default.** Every check only reads, **except `open-dcr`** (#12), which really does create a registration — and it is **off unless you pass `--unsafe-writes`**.
+1. **Nothing is changed by default.** No check writes data, **except `open-dcr`** (#12), which really does create a registration — and it is **off unless you pass `--unsafe-writes`**. Not quite "read-only", though: check #7 opens a session it does not hand back (see rule 5).
+   **Anything that write creates is written down the instant it happens**, to `mcpauth-writes.jsonl` and to the error output, before we even try to delete it again. The report only appears once every check has finished, so without that an interruption part-way through left a real registration on someone else's server with its identifier nowhere at all.
 2. **We control where our own requests go.** Almost every address we fetch after the very first one was *chosen by the server we are scanning* — it tells us where its login server is, where to register, where its info pages live. Following that blindly would turn our scanner into someone else's weapon (the classic name for this is a **confused deputy**: a trusted program tricked into misusing its access). So every such address is checked first: addresses inside private networks are refused, anything that isn't `http`/`https` is refused, and the one **write** may only go to the server we're scanning or a sibling address under the same domain name. A refused address is always reported, never quietly skipped.
+   **How that is enforced, in two places.** Checking the address as written catches only the obvious form (`http://10.0.0.5/`), because a *name* like `intranet.example.com` looks like any other public address until you look it up. So the check runs twice: once on the address as written, before we fetch it, and again on the address the name actually **resolved to**, at the moment of connecting. The second one is what catches a name the scanned server chose that points at your own machine, your office network, or the cloud service that hands out machine credentials. It has to happen at connect time rather than a moment earlier, because a name can be re-pointed in between (the trick is called **DNS rebinding**). What is still permitted is in "Known limitations" below.
 3. **We never follow redirects** (a reply saying "go look over there instead"). Following one would let a server hand us another host's document and have us credit it to itself — and RFC 9728 is entirely about *which* host published a document.
 4. **Certificates are checked.** A failed certificate becomes a *finding*, not something we shrug off. `--insecure-tls` turns the checking off for local practice servers with homemade certificates, and it makes all our encryption verdicts meaningless — that's the trade.
-5. **Sessions are handed back, best effort.** A scan releases the session it opened with the `DELETE` request ("I'm done, discard this") that the rules prescribe. Check #6 opens up to four more so it can compare their tags, and releases those too — but without the `MCP-Protocol-Version` header, so a server that insists on that header can refuse those four and leave them sitting until they expire on their own. Left that way deliberately: a leftover session holds nothing but throwaway greeting data.
+5. **Sessions are handed back, best effort — with one known leak.** A scan releases the session it opened with the `DELETE` request ("I'm done, discard this") that the rules prescribe. Check #6 opens up to four more so it can compare their tags, and releases those too — but without the `MCP-Protocol-Version` header, so a server that insists on that header can refuse those four and leave them sitting until they expire on their own. **Check #7 opens one more and never releases it at all**, so a scan of a session-based server leaves exactly one session parked on it. A leftover session holds nothing but throwaway greeting data, but the leak is a bug, not a decision — it is listed under "Known limitations" below.
 
-> **Why rules 1 and 2 exist.** They were added *after* the write check, running live, created a real OAuth client on `api.llow.io` while the address we were scanning was `api.serff.ai` — a completely different domain that was never on our list. See "Outstanding obligation" below.
+> **Why rules 1 and 2 exist.** They were added *after* the write check, running live, created a real OAuth client on `api.llow.io` while the address we were scanning was `api.serff.ai` — a completely different domain that was never on our list. See "What we left behind" below.
 
 ---
 
@@ -155,7 +157,7 @@ YamAmit-MCP-auth/
       tier2.py           # gaps 6-12
     cli.py               # the command line: `mcpauth scan <url>`
   sandbox/               # 7 practice servers we run locally (see Validation)
-  tests/                 # 169 tests
+  tests/                 # 201 tests
   reports/               # raw scan evidence + result tables
 ```
 
@@ -199,6 +201,8 @@ uv run mcpauth scan https://host/mcp --json          # machine-readable
 uv run mcpauth scan https://host/mcp --tier 1        # only the easy checks
 uv run mcpauth scan --list-detectors                 # just list the checks; no address needed
 uv run mcpauth scan https://host/mcp --unsafe-writes # OPT IN to #12, which really registers
+                                                     # (records what it creates in ./mcpauth-writes.jsonl;
+                                                     #  override with --write-journal PATH)
 ```
 
 **Exit codes** (the number the command leaves behind, so a script can react): **0** nothing found · **1** at least one gap found · **2** the scan failed or the server never answered · **3** you typed the command wrong. 
@@ -224,7 +228,7 @@ uv run mcpauth scan http://127.0.0.1:9110/mcp --tier 2
 
 ## How we know the checks work
 
-`uv run pytest -q` → **169 tests pass.**
+`uv run pytest -q` → **201 tests pass.**
 
 The checks are tested against practice servers we wrote and run locally, because no single server can exercise every possible answer. (A server with no login at all can never demonstrate what a *badly worded* "log in first" reply looks like.) So we built one server per posture:
 
@@ -238,11 +242,11 @@ The checks are tested against practice servers we wrote and run locally, because
 | `stateful_open_server.py` | **wide open, yet session-based.** Yes — a server that wants a session tag and nothing else is a real and common thing, because a tag is not a login: it only says "same conversation as before", and **any stranger gets one just by asking**. So anyone greets it, receives a tag, and has full access to every tool with no password at any point. It happens because the transport rules *require* session handling but do not require authentication, so a developer who implements the transport carefully and forgets authorization lands here — which is the shape most of our 30 wide-open servers take. It is in the suite because our scanner used to not replay the tag, so this server answered `400` to everything and check #1 said "don't know" about a completely open server. Every other practice server is stateless, so none of them could catch that |
 | `subpath_prm_server.py` | **fully correct, but hosted on a sub-path** — i.e. its address has a path after the domain (`/public/mcp`, not the bare domain). The rule then puts its login-info page at `/.well-known/oauth-protected-resource/public/mcp` — the server's own path appended. A scanner that checks only the bare domain misses it and falsely accuses a correct server, which would have hit nearly every real server, since almost all sit at `/mcp` |
 
-The 169 tests come in three layers:
+The 201 tests come in three layers:
 
 - **35 live tests** that scan those practice servers and check the answer for every gap on every posture (`test_tier1.py` 14, `test_tier2.py` 21).
-- **96 small tests** of the individual judgement calls with no network involved: is this session tag guessable, is this address unencrypted, which web addresses should we try, is this address safe to fetch, was this reply really a login refusal, how do we read an SSE stream, does the version gate compare dates correctly.
-- **38 regression tests** — one per bug we have actually found and fixed, each pinning the wrong answer so it cannot come back.
+- **111 small tests** of the individual judgement calls with no network involved: is this session tag guessable, is this address unencrypted, which web addresses should we try, is this address safe to fetch, does a name that resolves into private space get refused, was this reply really a login refusal, how do we read an SSE stream, does the version gate compare dates correctly.
+- **55 regression tests** covering the roughly 33 bugs we have actually found and fixed, each pinning the wrong answer so it cannot come back. (Some bugs take several tests: five cover the handshake bug alone, and six cover the destination guard.) Each one has been checked to **fail** against the code as it was before its fix — a regression test that passes either way pins nothing.
 
 A check is considered finished when it says `HAS_GAP` against the deliberately-broken server **and** `NO_GAP` against the deliberately-correct one.
 
@@ -250,7 +254,7 @@ A check is considered finished when it says `HAS_GAP` against the deliberately-b
 
 ## Real-world results — 88 public servers
 
-One read-only scan per server, all 11 non-writing checks, run 2026-09-18. The raw machine-readable output is committed in `reports/raw-rescan-final/` and the address list in `reports/endpoints.txt`. **Every number below was recalculated from that raw output**, not copied from an earlier write-up.
+This table is **two runs**, not one. The first eleven rows come from one read-only scan per server, all 11 non-writing checks, run 2026-09-18 — raw output committed in `reports/raw-rescan-final/`. The twelfth row (`open-dcr`, the one check that writes) comes from a separate run three days later, on 2026-09-21 — raw output in `reports/raw_dcr/_summary.json`. The address list for both is `reports/endpoints.txt`. **Every number below was recalculated from that raw output**, not copied from an earlier write-up.
 
 | Gap | HAS_GAP | NO_GAP | N/A | INCONCLUSIVE | ERROR |
 |---|--:|--:|--:|--:|--:|
@@ -267,39 +271,29 @@ One read-only scan per server, all 11 non-writing checks, run 2026-09-18. The ra
 | `implicit-flow-enabled` | 0 | 52 | 35 | 1 | 0 |
 | `open-dcr` | **38** | 0 | 39 | 10 | 1 |
 
-Every row covers all 88 servers, because both tiers ran in a single pass. 
-`open-dcr` run: **38 servers let anyone register a client with no approval.** The 10 inconclusive ones answered `400` — they offer registration but rejected our request, so they are neither open nor proven closed. That run left 39 registrations behind; see the obligation below.
+# TODO read from here
+
+Every row covers all 88 servers: the read-only pass ran both tiers together, and the `open-dcr` pass covered the same 88 addresses.
+
+`open-dcr` run: **38 servers let anyone register a client with no approval.** Of the 10 inconclusive ones, 8 answered `400` and 1 answered `500` — they offer registration but rejected our request, so they are neither open nor proven closed. The 10th (`semgrep`) was never sent a request at all: it advertised registration on `login.semgrep.dev`, a third-party host, and safety rule 2 refused the write. That is the only time the containment rule has fired in a live run. The run left 38 registrations behind; see "What we left behind" below.
 
 ### The headline
 
-**30 of the 88 servers hand their tool list to a complete stranger — 456 usable tools in total.** The biggest are `dock` (70 tools), `switch` (61), `gondola` (39) and `nullary` (35).
+**30 of the 88 servers need no login to list their tools — 456 tools in total.** No rule is broken, since authenticating is only a SHOULD; what's notable is that nothing stops a stranger asking what they can do. The biggest are `dock` (70 tools), `switch` (61), `gondola` (39) and `nullary` (35).
 
-They are concentrated among the lesser-known entries. Every recognisable vendor demanded a login: Stripe, Notion, Sentry, Linear, GitHub, PayPal, Square, Wix, Zapier, Intercom, Atlassian, Cloudflare's protected servers, Neon, Grafana, Prisma, Vercel, Webflow, Semgrep. DeepWiki and EdgeOne are open **on purpose**. EdgeOne is still the most interesting single case, because one of its freely-available tools, `deploy-html`, **changes things** rather than only reading them.
+They are concentrated among the lesser-known entries. Every recognisable vendor demanded a login: Stripe, Notion, Sentry, Linear, GitHub, PayPal, Square, Wix...
+DeepWiki and EdgeOne are open **on purpose**. EdgeOne is still the most interesting single case, because one of its freely-available tools, `deploy-html`, **changes things** rather than only reading them.
 
 Two results need context so they aren't over-read:
 
 - `origin-not-validated` (26 servers) is a genuine breach of a MUST, but it mostly hits the same wide-open servers, and the attack it protects against is weak for a normal encrypted public server.
-- `cors-misconfiguration` is a general web-security observation. **CORS is not mentioned in the MCP rules**, so we never report it as a rule violation.
-
-### What changed since the numbers we published before, and why
-
-The earlier table **undersold the main finding**: it said 24 open servers where the real number is 30. Two bugs in our own scanner were responsible for most of the difference. Both are fixed, and both now have a test pinning them:
-
-- **We were silently throwing away most of long replies.** The function we used to read a reply returns *up to* the amount you ask for — whatever has arrived so far — not the amount you asked for. We called it once and assumed we had everything. Any reply bigger than a single arriving chunk came back as a fragment while reporting itself complete: data loss disguised as data. `dock` sent 91,703 characters listing its tools; we kept 8,183 of them, which no longer made sense as a document, so the check gave up and said "don't know" — about a server that had just listed 70 tools to a stranger. **Six servers were hidden this way.**
-- **A bare `403` was being counted as "this server requires a login".** But `403` is also what a firewall, a country block or a bot filter says. So a scan that was simply *blocked* earned the server a clean bill of health on our most important check — the worst possible direction for a mistake. A `403` now only counts if it is backed up: either a `WWW-Authenticate` header, or a genuine OAuth error code in the reply. That is why `NO_GAP` dropped from 46 to 42.
-
-Two more shifts are **our tool becoming more honest**, not the internet changing:
-
-- `predictable-session-id` went from **76 `NOT_APPLICABLE` to 58 `INCONCLUSIVE`**. It used to announce "this server has no sessions" whenever it saw no session tag — including when the server had refused to start one *because we weren't logged in*. It now tells those two situations apart, and the honest answer for most servers turns out to be "unknown".
-- `no-tls-transport` went from **88 `NO_GAP` to 83 `NO_GAP` + 5 `INCONCLUSIVE`**. It used to pass any address beginning `https` without testing anything at all. It now actually connects, and admits it when a server can't be reached to have its certificate inspected.
-
-`missing-protected-resource-metadata` rose from 17 to 22 `HAS_GAP` even though we *fixed* a bug that used to cause false accusations here — looking in the right place moved some servers out of the gap, but removing the 4 `ERROR`s and tightening "don't know" moved more servers in.
+- `cors-misconfiguration` is a general web-security observation. **CORS is not mentioned in the MCP rules**, so we don't actually report it as a rule violation.
 
 ### What still limits these numbers
 
 - **58 of the 88 servers never told us which rules version they follow** (22 said `2025-06-18`, 4 said `2025-03-26`, 4 said `2024-11-05`) — because a properly protected server says "log in first" before it gets around to agreeing a version. So the strict standard only ever applied to 22 servers; for the rest, version-dependent checks answer "don't know".
 - **We have not implemented the old two-connection SSE greeting**, which is why `session-id-in-url` is "don't know" for 74 of 88.
-- **88 servers is a thin sample.** The public directory holds 75,000+ entries (see below). These are rates within one small slice, **not** rates across the internet.
+- **88 servers is a thin sample.** The public directory is far larger — a manual pull stopped after 750 pages / 75,000 entries without reaching the end, so the true total is unknown and at least that. That pull was done by hand and is **not committed here**, so treat the figure as an observation, not as evidence in this repo. These are rates within one small slice, **not** rates across the internet.
 
 **And the framing that matters:** "protected" here means only that the server demanded a login on the first unauthenticated request. It says nothing about whether its login process is sound — whether it checks that tokens were issued for *it*, whether it uses PKCE, whether it keeps users apart. Those were the dropped Tier-3 gaps, and this tool will never report on them. Also: breaking a MUST is not automatically an exploitable hole.
 
@@ -309,41 +303,28 @@ Shodan's free tier refuses the searches we'd need (it answers `403` once you hav
 
 The **official MCP Registry** (`registry.modelcontextprotocol.io/v0/servers`) is free, needs no key, is read page by page, and gives an address plus connection type for each remote entry — ready to feed straight into our scanner.
 
-**It is far bigger than our list reflects.** A fresh pull stopped after **750 pages / 75,000 entries without reaching the end**, so the true total is unknown and at least that. Looking at just the first 12,030 entries: **10,669 remote addresses, 4,425 of them distinct, spread over 3,680 distinct hosts.** Our 88 are one-per-host samples of a small fraction of that — not a census.
-
 Free ways to find servers that *don't* advertise themselves: mining certificate transparency logs (a public record of every certificate issued) for `mcp.<company>` names, and searching GitHub for committed `mcp.json` config files. The honest limit: directories only find servers that *chose* to be listed. Genuinely hidden servers still need a paid service or permission to scan.
 
 ---
 
-## ⚠ Outstanding obligation — 39 OAuth clients left on servers we don't own
+## ⚠ What we left behind — 42 OAuth clients on servers we don't own
 
-Running check #12 across all 88 servers (2026-09-21) created 39 real client registrations that
-could not be deleted. They are inert — no password, no data access, nobody has logged in
-through them — but they are our litter on other people's systems. Full list of hosts and
-identifiers in `reports/dcr_scan.md`; the earlier, smaller run is preserved as
-`reports/dcr_scan.prev-1.md`.
+Two live `open-dcr` runs created real client registrations we could not remove. They are inert — no password, no data access, nobody has logged in through them — but they are our litter on other people's systems.
 
-**Cleanup succeeded 0 times out of 38.** Not one server returned the RFC 7592 fields needed to
-delete a registration, so the check's self-cleaning — the thing that made it feel safe to run —
-works only against our own practice server. Anyone running this check against real servers
-should expect every registration to be permanent. That is the reason it stays off unless
-`--unsafe-writes` is passed.
+- **38 from the 2026-09-21 run** over all 88 servers. Hosts and identifiers: `reports/dcr_scan.md`.
+- **4 from an earlier, smaller run.** Hosts and identifiers: `reports/dcr_scan.prev-1.md`. One of these is the `api.llow.io` write described under safety rule 2.
 
-One further client may exist on a host we cannot name: one run aborted mid-probe, after the
-registration but before we could record where it went.
+**Cleanup succeeded 0 times out of 38.** Not one server returned the RFC 7592 fields needed to delete a registration, so the check's self-cleaning — the thing that made it feel safe to run — works only against our own practice server. Anyone running this check against real servers should expect every registration to be permanent. That is why it stays off unless `--unsafe-writes` is passed.
+
+`reports/dcr_scan.md` reports **39**, not 38. That extra row is a false alarm: the probe for `hostprofit-mcp-production-up-railway-app` timed out before it had any address to register at, so no write happened. There is no 39th client to look for.
 
 **Current decision: leave them in place, keep this record, do not contact anyone.**
-
-An earlier run also wrote to `api.llow.io` while scanning `api.serff.ai` — a different company
-that was never on our list. That is why the containment rules above exist; in this run they
-refused one write for the same reason (`mcp.semgrep.ai` advertising registration on
-`login.semgrep.dev`).
 
 ---
 
 ## The official rules have moved ahead of this tool
 
-The current MCP revision is **`2026-07-28`** (and `2025-11-25` also exists). Our tool speaks `2025-06-18`. This is more than a version number:
+During our work, a new MCP revision was published: **`2026-07-28`** (and `2025-11-25` also exists). Our tool speaks `2025-06-18`. Why it matters:
 
 - **Sessions were removed from the protocol entirely in `2026-07-28`** — no session tag, no held-open stream, no "discard this session" request. They existed only in the revisions from `2025-03-26` to `2025-11-25`. So gaps **#5 and #6 describe a generation of the protocol that the rules have since dropped**, and should be presented as tied to those revisions rather than as timeless.
 - **The oldest (`2024-11-05`) two-connection style is officially deprecated** and may be removed. So building support for it — which is what gap #5 needs — means investing in something on its way out. Worth a deliberate decision.
@@ -356,7 +337,12 @@ The current MCP revision is **`2026-07-28`** (and `2025-11-25` also exists). Our
 
 ## Known limitations and open work
 
-Written down rather than discovered later.
+**Containment** — what rule 2 still permits
+
+- **"Same domain name" is judged by the last two labels only.** So on shared hosting (`*.railway.app`, `*.vercel.app`, `*.github.io`) every unrelated tenant counts as a sibling, and the one **write** is allowed to reach them. Our own address list contains a `railway.app` server, so this is not hypothetical. (A proper fix needs a *public suffix list* — the published register of which name endings are shared, so `railway.app` can be told apart from an ordinary company domain.)
+- **Unrelated but public third parties are fetched, by design.** Following a login-info page that names someone else's login server is the normal case, so reads are not confined to the scanned company. Only the one **write** is.
+- Resolving-to-private names, and the `localhost.` / `0x7f.0.0.1` spellings that used to slip past the loopback check, are now refused at connect time (see safety rule 2).
+- **Check #7 leaves one session behind** on every session-based server and never sends the `DELETE` (see safety rule 5).
 
 **Correctness**
 
@@ -387,4 +373,4 @@ Written down rather than discovered later.
 
 - **Use simple language. When a technical term appears, define it briefly in parentheses.** We have no background in these networking subjects.
 - Reassess the scope at each tier boundary; inside a tier, work independently.
-- Keep this document current. It is the single source of truth — no separate per-session status files.
+- Keep this document current. It is the single source of truth.

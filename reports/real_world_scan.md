@@ -1,5 +1,7 @@
 # Real-World MCP Server Auth-Posture Scan
 
+> **SUPERSEDED.** These numbers predate two prober fixes and are wrong — notably they undercount wide-open servers. The current figures are in `README.md`, computed from `reports/raw-rescan-final/`.
+
 **Date:** 2026-06-13
 **Tool:** `mcpauth scan <URL> --json` (Tier-1 detectors only, 5 gaps)
 **Scope:** 36 public remote MCP endpoints (HTTP / SSE / streamable-HTTP). One scan per endpoint, single retry on transient failure. No detector logic modified.

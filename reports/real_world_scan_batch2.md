@@ -1,5 +1,7 @@
 # Real-World MCP Server Auth-Posture Scan — Batch 2
 
+> **SUPERSEDED.** These numbers predate two prober fixes and are wrong — notably they undercount wide-open servers. The current figures are in `README.md`, computed from `reports/raw-rescan-final/`.
+
 **Date:** 2026-06-20
 **Tool:** `mcpauth scan <URL> --json` (Tier-1 detectors only, 5 gaps)
 **Source:** Official MCP Registry (`registry.modelcontextprotocol.io/v0/servers`), 12 pages (~1,200 server records) paginated via `metadata.nextCursor`. Remote (`http(s)`) endpoints from each entry's `remotes[]` were extracted; stdio-only servers skipped.
