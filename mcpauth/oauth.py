@@ -22,9 +22,15 @@ Two rules govern *where* we look:
   remote server — reporting fully compliant servers as missing their metadata.
 
 * **Destinations are validated.** Every URL past the first hop is chosen by the server
-  being scanned, so each one goes through `is_ssrf_risk` before it is fetched. Without
-  that, a hostile target can aim the scanner at cloud-metadata services, at hosts on the
-  operator's LAN, or at an unrelated third party. RFC 9728 §7.7 asks for exactly this.
+  being scanned, so each one goes through `is_ssrf_risk` before it is fetched. RFC 9728 §7.7
+  asks for exactly this. Note the actual scope: `is_ssrf_risk` refuses non-http(s) schemes
+  and internal addresses *written as IP literals*; a name that resolves into private space is
+  caught later, by the resolver guard on the connector (`netguard.resolved_address_reason`),
+  which is what makes the promise hold for names too. What stays deliberately allowed is a
+  public third-party host — reads there are how #4/#9-#11 follow a PRM that names someone
+  else's authorization server. So a hostile target can still make us GET an unrelated public
+  third party, and the document we fetch is credited to the target unless `resource_mismatch`
+  catches it. Only #12's write is confined to the target and its siblings, via `same_site`.
 """
 
 from __future__ import annotations

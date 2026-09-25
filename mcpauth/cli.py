@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
+from pathlib import Path
 from typing import NoReturn
 from urllib.parse import urlsplit
 
@@ -95,6 +97,40 @@ def _exit_code(report: dict) -> int:
     return EXIT_CLEAN
 
 
+DEFAULT_WRITE_JOURNAL = "mcpauth-writes.jsonl"
+
+
+def _write_journal(path: Path):
+    """Build the sink that records anything a write-performing detector creates.
+
+    Two destinations on purpose. The file is the durable one, appended and fsynced per
+    record so it survives whatever stops the process on the next statement. stderr is the
+    one the operator cannot miss and that `reports/run_scans.sh` already captures per
+    endpoint — the report only reaches stdout after every detector finishes, so before this
+    existed a Ctrl-C during the RFC 7592 cleanup left a real client registered on someone
+    else's server with its id nowhere at all.
+
+    A failing journal must not take the scan down with it: the Finding still carries the
+    same information, so a write error is reported and swallowed.
+    """
+    def sink(record: dict) -> None:
+        line = json.dumps(record, sort_keys=True)
+        print(f"WRITE RECORD: {line}", file=sys.stderr, flush=True)
+        try:
+            with path.open("a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+        except OSError as e:
+            print(
+                f"WARNING: could not append to {path} ({e}); the record above is the only "
+                "copy outside the report.",
+                file=sys.stderr, flush=True,
+            )
+
+    return sink
+
+
 def _validate_url(parser: argparse.ArgumentParser, url: str) -> None:
     """Reject a target that is not a URL, instead of silently reporting it as clean.
 
@@ -147,6 +183,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Do not verify TLS certificates. Only for local sandboxes with self-signed "
              "certs; it makes the TLS verdicts meaningless and allows interception.",
     )
+    scan_p.add_argument(
+        "--write-journal", default=DEFAULT_WRITE_JOURNAL, metavar="PATH",
+        help="Where to record anything a write-performing detector creates, as it happens "
+             f"(default: {DEFAULT_WRITE_JOURNAL}). Only used with --unsafe-writes. Appended "
+             "to, never truncated.",
+    )
     scan_p.add_argument("--json", action="store_true", help="Emit raw JSON report")
     scan_p.add_argument(
         "--list-detectors", action="store_true",
@@ -187,17 +229,23 @@ def main(argv: list[str] | None = None) -> int:
             "to see valid ids"
         )
 
+    journal = None
     if not args.unsafe_writes:
         exclude |= WRITE_DETECTORS
     else:
         print(
             f"WARNING: write-performing detector(s) enabled: {', '.join(sorted(WRITE_DETECTORS))}. "
-            f"These send real requests that create state on {args.url}.",
+            f"These send real requests that create state on {args.url}. "
+            f"Anything created is recorded in {args.write_journal} as it happens.",
             file=sys.stderr,
         )
+        journal = _write_journal(Path(args.write_journal))
 
     report = asyncio.run(
-        scan(args.url, tiers, exclude or None, insecure_tls=args.insecure_tls)
+        scan(
+            args.url, tiers, exclude or None,
+            insecure_tls=args.insecure_tls, write_journal=journal,
+        )
     )
     if args.json:
         print(json.dumps(report, indent=2))

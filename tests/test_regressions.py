@@ -427,6 +427,447 @@ def test_dcr_treats_any_2xx_as_a_created_client():
     assert _CLEANUP_FAIL_MARKER in f.notes
 
 
+# --- containment: the address guard must see through a hostname (C1) --------------
+#
+# `netguard`'s string predicates cannot tell `https://intranet.example.com/register` from
+# any other public URL, so a target-supplied name pointing at loopback, RFC 1918 space or
+# 169.254.169.254 passed every check and was then connected to. The check now runs in the
+# resolver, on the addresses actually about to be dialled.
+
+
+class _StubResolver:
+    """Stands in for aiohttp's resolver so these tests need no DNS and no network."""
+
+    def __init__(self, mapping):
+        self._mapping = mapping
+
+    async def resolve(self, host, port=0, family=None):
+        return [
+            {"hostname": host, "host": a, "port": port, "family": family,
+             "proto": 0, "flags": 0}
+            for a in self._mapping[host]
+        ]
+
+    async def close(self):
+        pass
+
+
+@pytest.mark.parametrize("address", ["127.0.0.1", "10.0.0.5", "169.254.169.254"])
+def test_public_name_resolving_to_an_internal_address_is_refused(address):
+    """The bypass was a name, not an IP literal: `is_internal_host` never resolved one."""
+    from mcpauth.netguard import BlockedDestination
+    from mcpauth.probe import _ContainedResolver
+
+    r = _ContainedResolver(
+        "mcp.example.com", _StubResolver({"sneaky.attacker.test": [address]})
+    )
+    with pytest.raises(BlockedDestination) as exc:
+        asyncio.run(r.resolve("sneaky.attacker.test", 443))
+    assert address in str(exc.value)
+
+
+def test_split_horizon_name_is_refused_even_if_one_answer_is_public():
+    """Otherwise the verdict is decided by resolver ordering — a coin flip."""
+    from mcpauth.netguard import BlockedDestination
+    from mcpauth.probe import _ContainedResolver
+
+    r = _ContainedResolver(
+        "mcp.example.com", _StubResolver({"both.test": ["93.184.216.34", "10.1.2.3"]})
+    )
+    with pytest.raises(BlockedDestination):
+        asyncio.run(r.resolve("both.test", 443))
+
+
+def test_the_scan_target_may_still_resolve_internally():
+    """Scanning a local sandbox must keep working, by name as well as by literal.
+
+    The exemption is scoped to that one host: `test_loopback_target_does_not_unlock_the_
+    private_address_space` in test_units.py pins the other half.
+    """
+    from mcpauth.probe import _ContainedResolver
+
+    stub = _StubResolver({"localhost": ["127.0.0.1"], "other.test": ["127.0.0.1"]})
+    r = _ContainedResolver("localhost", stub)
+    assert asyncio.run(r.resolve("localhost", 9100))          # allowed: it is the target
+    with pytest.raises(Exception):                            # a different name is not
+        asyncio.run(r.resolve("other.test", 9100))
+
+
+def test_public_name_resolving_publicly_is_allowed():
+    """Following a PRM that names a third party's authorization server is the normal case."""
+    from mcpauth.probe import _ContainedResolver
+
+    r = _ContainedResolver(
+        "mcp.example.com", _StubResolver({"auth.elsewhere.test": ["93.184.216.34"]})
+    )
+    assert asyncio.run(r.resolve("auth.elsewhere.test", 443))
+
+
+def test_blocked_destination_is_not_mistaken_for_a_tls_failure():
+    """A refusal graded as a cert failure would become a `no-tls-transport` HAS_GAP."""
+    from mcpauth.netguard import BlockedDestination
+    from mcpauth.probe import _is_connect_failure, _is_tls_failure
+
+    exc = BlockedDestination("'x.test' resolves to internal address 10.0.0.5 — aborting")
+    assert _is_tls_failure(f"{type(exc).__name__}: {exc}") is False
+    assert _is_connect_failure(exc) is True
+
+
+# --- the one write must never be recorded as no write at all (C2, C3) --------------
+
+
+def _registration_ok(**body):
+    """A 201 whose body is already *parsed*, as `Probe.request` would return it.
+
+    `_fake` deliberately leaves `json` unset — that is what makes it useful for the
+    unparseable-body branch — so a test about the parsed path has to supply it.
+    """
+    from mcpauth.probe import HttpResult
+
+    return HttpResult(
+        ok=True, status=201, text=json.dumps(body), json=body,
+        url="https://x.example/register", method="POST",
+    )
+
+
+def test_registration_that_times_out_declares_an_obligation():
+    """A POST that reached the server and then lost its reply may have created a client.
+
+    This returned ERROR with EMPTY notes, so `run_dcr.py` set `cleanup_failed=False` and
+    the report printed "✅ Every client created was deleted again" over a permanent
+    registration on someone else's production server.
+    """
+    from mcpauth.detectors.tier2 import _CLEANUP_FAIL_MARKER, OpenDcr
+    from mcpauth.models import ProbeContext, TargetSpec
+    from mcpauth.oauth import OAuthDiscovery
+
+    disc = OAuthDiscovery(attempted=True)
+    disc.as_metadata = {"registration_endpoint": "https://x.example/register"}
+
+    class ReplyLost:
+        async def request(self, method, url, **kw):
+            return _fake(ok=False, error="TimeoutError: ")
+
+    journal = []
+    ctx = ProbeContext(
+        target=TargetSpec(url="https://x.example/mcp"), probe=ReplyLost(),
+        write_journal=journal.append,
+    )
+    ctx.oauth = disc
+    f = asyncio.run(OpenDcr().detect(ctx))
+    assert f.verdict is Verdict.ERROR
+    assert _CLEANUP_FAIL_MARKER in f.notes, f.notes
+    assert [r["stage"] for r in journal] == ["attempted-outcome-unknown"]
+
+
+def test_registration_that_never_connected_declares_nothing():
+    """The mirror case: inventing an obligation leaves one that can never be discharged.
+
+    `reports/dcr_scan.md` over-reports by exactly one row because of this.
+    """
+    import aiohttp
+
+    from mcpauth.detectors.tier2 import _CLEANUP_FAIL_MARKER, OpenDcr
+    from mcpauth.models import ProbeContext, TargetSpec
+    from mcpauth.oauth import OAuthDiscovery
+    from mcpauth.probe import _is_connect_failure
+
+    disc = OAuthDiscovery(attempted=True)
+    disc.as_metadata = {"registration_endpoint": "https://x.example/register"}
+
+    class NeverConnected:
+        async def request(self, method, url, **kw):
+            res = _fake(ok=False, error="ClientConnectorDNSError: no such host")
+            res.connect_failed = True
+            return res
+
+    journal = []
+    ctx = ProbeContext(
+        target=TargetSpec(url="https://x.example/mcp"), probe=NeverConnected(),
+        write_journal=journal.append,
+    )
+    ctx.oauth = disc
+    f = asyncio.run(OpenDcr().detect(ctx))
+    assert f.verdict is Verdict.ERROR
+    assert _CLEANUP_FAIL_MARKER not in f.notes, f.notes
+    assert journal == [], "nothing was created, so nothing is owed"
+    # The classification this branch rests on is by exception type, not message text.
+    key = aiohttp.ClientConnectorDNSError.__new__(aiohttp.ClientConnectorDNSError)
+    assert _is_connect_failure(key) is True
+    assert _is_connect_failure(TimeoutError("read timed out")) is False
+
+
+def test_created_client_id_is_journalled_before_cleanup_is_attempted():
+    """The id lived only in the coroutine frame until the Finding was serialised.
+
+    `run_dcr.py`'s 25 s per-server budget spans the POST *and* the RFC 7592 DELETE, so a
+    cancellation during cleanup destroyed the only record of a client we had just created.
+    """
+    from mcpauth.detectors.tier2 import OpenDcr
+    from mcpauth.models import ProbeContext, TargetSpec
+    from mcpauth.oauth import OAuthDiscovery
+
+    disc = OAuthDiscovery(attempted=True)
+    disc.as_metadata = {"registration_endpoint": "https://x.example/register"}
+    order = []
+
+    class RegistersThenCancels:
+        async def request(self, method, url, **kw):
+            order.append(method)
+            if method == "POST":
+                return _registration_ok(
+                    client_id="abc123",
+                    registration_client_uri="https://x.example/c/1",
+                    registration_access_token="rat",
+                )
+            raise asyncio.CancelledError            # cleanup dies mid-flight
+
+    journal = []
+    ctx = ProbeContext(
+        target=TargetSpec(url="https://x.example/mcp"), probe=RegistersThenCancels(),
+        write_journal=journal.append,
+    )
+    ctx.oauth = disc
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(OpenDcr().detect(ctx))
+    # The POST happened, cleanup was attempted, and the id is already durable.
+    assert order == ["POST", "DELETE"]
+    assert journal and journal[0]["stage"] == "created"
+    assert journal[0]["client_id"] == "abc123"
+    assert journal[0]["registration_endpoint"] == "https://x.example/register"
+
+
+def test_journal_failure_does_not_break_the_scan():
+    """The Finding is authoritative; a broken sink must not turn a real verdict into ERROR."""
+    from mcpauth.detectors.tier2 import OpenDcr
+    from mcpauth.models import ProbeContext, TargetSpec
+    from mcpauth.oauth import OAuthDiscovery
+
+    disc = OAuthDiscovery(attempted=True)
+    disc.as_metadata = {"registration_endpoint": "https://x.example/register"}
+
+    class Registers:
+        async def request(self, method, url, **kw):
+            return _registration_ok(client_id="abc123")
+
+    def explode(_record):
+        raise OSError("disk full")
+
+    ctx = ProbeContext(
+        target=TargetSpec(url="https://x.example/mcp"), probe=Registers(),
+        write_journal=explode,
+    )
+    ctx.oauth = disc
+    f = asyncio.run(OpenDcr().detect(ctx))
+    assert f.verdict is Verdict.HAS_GAP
+    assert "abc123" in f.evidence
+    assert any("write journal failed" in n for n in ctx.discovery_notes)
+
+
+def test_non_success_reply_naming_a_client_id_is_not_journalled_as_created():
+    """A 409 rejecting our metadata can echo a client_id we did not create.
+
+    Journalling that as `created` both fabricates an obligation and leaves it unclosed,
+    since the non-2xx branches never reach cleanup. The note must also stop saying
+    "without a client_id" while printing one in the evidence directly beneath.
+    """
+    from mcpauth.detectors.tier2 import _CLEANUP_FAIL_MARKER, OpenDcr
+    from mcpauth.models import ProbeContext, TargetSpec
+    from mcpauth.oauth import OAuthDiscovery
+    from mcpauth.probe import HttpResult
+
+    disc = OAuthDiscovery(attempted=True)
+    disc.as_metadata = {"registration_endpoint": "https://x.example/register"}
+    body = {"error": "invalid_client_metadata", "client_id": "not-ours"}
+
+    class Rejects409:
+        async def request(self, method, url, **kw):
+            return HttpResult(
+                ok=True, status=409, text=json.dumps(body), json=body,
+                url="https://x.example/register", method="POST",
+            )
+
+    journal = []
+    ctx = ProbeContext(
+        target=TargetSpec(url="https://x.example/mcp"), probe=Rejects409(),
+        write_journal=journal.append,
+    )
+    ctx.oauth = disc
+    f = asyncio.run(OpenDcr().detect(ctx))
+    assert f.verdict is Verdict.INCONCLUSIVE
+    stages = [r["stage"] for r in journal]
+    assert "created" not in stages, stages
+    assert stages == ["client-id-in-non-success-reply"], stages
+    # The id is disclosed, and the note no longer contradicts the evidence.
+    assert "not-ours" in f.notes
+    assert "without a client_id" not in f.notes
+    assert _CLEANUP_FAIL_MARKER in f.notes
+
+
+def test_connect_timeout_is_not_reported_as_a_delivered_post():
+    """With only a total budget, aiohttp raises a bare TimeoutError for every phase.
+
+    That made `_is_connect_failure` unable to tell a dead TCP handshake from a lost reply,
+    so `open-dcr` demanded manual cleanup for hosts it never reached. A separate
+    `sock_connect` budget yields `ConnectionTimeoutError`, which is unambiguous.
+    """
+    import aiohttp
+
+    from mcpauth.probe import Probe, _is_connect_failure
+
+    timeout = Probe(timeout=12.0)._timeout
+    assert timeout.sock_connect is not None, "connect phase needs its own budget"
+    assert timeout.sock_connect < timeout.total, "else the total fires first"
+
+    connect = aiohttp.ConnectionTimeoutError.__new__(aiohttp.ConnectionTimeoutError)
+    assert _is_connect_failure(connect) is True
+    # A read timeout is still "may have been delivered" — the conservative direction.
+    assert _is_connect_failure(aiohttp.SocketTimeoutError()) is False
+    assert _is_connect_failure(TimeoutError("read timed out")) is False
+
+
+def test_cli_supplies_a_write_journal_when_writes_are_enabled(tmp_path, monkeypatch):
+    """The durability fix was inert on the documented `--unsafe-writes` path.
+
+    `scan()` grew a `write_journal` parameter, but the CLI — which is how README documents
+    opting into the write, and what `run_scans.sh --unsafe-writes` runs — passed no sink, so
+    an interrupt during RFC 7592 cleanup still left a client with its id nowhere on disk.
+    """
+    from mcpauth import cli
+
+    captured = {}
+
+    async def fake_scan(url, tiers=None, exclude=None, **kw):
+        captured.update(kw)
+        if kw.get("write_journal"):
+            kw["write_journal"]({"stage": "created", "client_id": "abc123"})
+        return {"target": url, "reachable": True, "discovery": [], "findings": [],
+                "summary": {}, "protocol_version": None}
+
+    monkeypatch.setattr(cli, "scan", fake_scan)
+    path = tmp_path / "writes.jsonl"
+    cli.main(["scan", "https://x.example/mcp", "--unsafe-writes",
+              "--write-journal", str(path)])
+    assert captured.get("write_journal") is not None, "no sink was passed"
+    assert json.loads(path.read_text().strip())["client_id"] == "abc123"
+
+    # Without --unsafe-writes nothing can be created, so no sink and no file.
+    captured.clear()
+    other = tmp_path / "unused.jsonl"
+    cli.main(["scan", "https://x.example/mcp", "--write-journal", str(other)])
+    assert captured.get("write_journal") is None
+    assert not other.exists()
+
+
+# --- Ctrl-C must stop a live run, not just annotate it -----------------------------
+
+
+def _load_run_dcr(name, tmp_path):
+    """Load `reports/run_dcr.py` with its on-disk paths redirected into a temp dir."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(name, ROOT / "reports" / "run_dcr.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.RAW_DIR = tmp_path
+    mod.JOURNAL = tmp_path / "write_journal.jsonl"
+    mod.DELAY_BETWEEN = 0
+    return mod
+
+
+def test_cancelling_a_live_run_stops_it_touching_further_servers(tmp_path):
+    """Catching `CancelledError` alongside `Exception` in `dcr_one` consumed the first Ctrl-C.
+
+    On Python 3.11+ the first SIGINT arrives as one `CancelledError`. Absorbing it into an
+    ERROR row let `run_live` carry on and perform a real registration POST against every
+    remaining third-party server, while the operator saw a run that looked complete.
+
+    This goes through the real `dcr_one`, because the defect was in its except clause —
+    stubbing `dcr_one` out would pass either way.
+    """
+    run_dcr = _load_run_dcr("run_dcr_cancel", tmp_path)
+    detected = []
+
+    async def fake_discover(probe, url, *a, **kw):
+        from mcpauth.oauth import OAuthDiscovery
+
+        d = OAuthDiscovery(attempted=True)
+        d.as_metadata = {"registration_endpoint": f"{url.rsplit('/', 1)[0]}/register"}
+        return d
+
+    class CancelsMidProbe:
+        gap_id = "open-dcr"
+
+        async def detect(self, ctx):
+            detected.append(ctx.target.url)
+            raise asyncio.CancelledError      # as a first Ctrl-C would arrive
+
+    run_dcr.discover_oauth = fake_discover
+    run_dcr.OpenDcr = CancelsMidProbe
+    endpoints = [("first", "https://a.example/mcp"), ("second", "https://b.example/mcp")]
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(run_dcr.run_live(endpoints))
+    assert detected == ["https://a.example/mcp"], (
+        f"the run continued to {detected[1:]} after the cancel"
+    )
+    # Stopping must not cost us the record: the journal line precedes the re-raise.
+    written = [json.loads(x) for x in
+               (tmp_path / "write_journal.jsonl").read_text().splitlines()]
+    assert [w["stage"] for w in written] == ["aborted-outcome-unknown"]
+    assert written[0]["registration_endpoint"] == "https://a.example/register"
+
+
+def test_an_abort_before_any_endpoint_is_known_claims_nothing(tmp_path):
+    """No registration endpoint means no POST was possible, so no obligation exists.
+
+    Flagging cleanup anyway is what makes `reports/dcr_scan.md` over-report by one row.
+    """
+    run_dcr = _load_run_dcr("run_dcr_abort", tmp_path)
+
+    async def dies_in_discovery(probe, url, *a, **kw):
+        raise TimeoutError
+
+    run_dcr.discover_oauth = dies_in_discovery
+    row = asyncio.run(run_dcr.dcr_one("x", "https://a.example/mcp"))
+    assert row["verdict"] == "ERROR"
+    assert row["cleanup_failed"] is False, row["notes"]
+    assert row["written_host"] is None
+    assert "no cleanup is owed" in row["notes"]
+    assert not (tmp_path / "write_journal.jsonl").exists()
+
+
+# --- the record of what we left behind must not be overwritten (C4) ---------------
+
+
+def test_json_report_backup_keeps_its_own_extension(tmp_path):
+    """`with_suffix('.prev-1.md')` gave JSON content a Markdown name.
+
+    That is why `_summary.json` was excluded from clobber protection and overwritten in
+    place, leaving the first live run's four client_ids only in `dcr_scan.prev-1.md`.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "run_dcr", ROOT / "reports" / "run_dcr.py"
+    )
+    run_dcr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(run_dcr)
+
+    target = tmp_path / "_summary.json"
+    target.write_text('["first run"]')
+    run_dcr._write_without_clobbering(target, '["second run"]')
+    assert (tmp_path / "_summary.prev-1.json").read_text() == '["first run"]'
+    assert target.read_text() == '["second run"]'
+    # A third run keeps both earlier ones.
+    run_dcr._write_without_clobbering(target, '["third run"]')
+    assert (tmp_path / "_summary.prev-2.json").read_text() == '["second run"]'
+    # The Markdown report's existing naming is unchanged.
+    md = tmp_path / "dcr_scan.md"
+    md.write_text("run one")
+    run_dcr._write_without_clobbering(md, "run two")
+    assert (tmp_path / "dcr_scan.prev-1.md").read_text() == "run one"
+
+
 def test_registration_secrets_are_redacted_from_evidence():
     """Reports get committed, so a client_secret must never reach one."""
     from mcpauth.probe import redact_secrets

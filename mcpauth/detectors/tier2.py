@@ -844,7 +844,41 @@ class OpenDcr(Detector):
             json_body=payload,
         )
         if not res.ok:
-            return self.finding(Verdict.ERROR, evidence=res.evidence())
+            if res.connect_failed:
+                # Nothing was ever sent — a refused connection, a DNS failure, a rejected
+                # certificate, or our own destination guard. No client can exist, so
+                # claiming an obligation here would invent one (and a live run that did
+                # exactly that is why `reports/dcr_scan.md` over-reports by one).
+                return self.finding(
+                    Verdict.ERROR,
+                    evidence=res.evidence(),
+                    notes=(
+                        "The registration POST never reached the server "
+                        f"({res.error}), so nothing was created and no cleanup is owed. "
+                        "Whether registration is open here is unknown."
+                    ),
+                )
+            # The connection was established and then the exchange broke — a read timeout,
+            # a reset, a dropped TLS session. The POST may well have been delivered and a
+            # client created, and there is no reply to learn its id from. Returning a bare
+            # ERROR here let `run_dcr.py` record `cleanup_failed=False` and print
+            # "✅ Every client created was deleted again" over a permanent registration on
+            # someone else's server. Declare the obligation instead: over-reporting one
+            # unverifiable write is recoverable, silently orphaning one is not.
+            self._journal(
+                ctx, endpoint, client_id=None,
+                stage="attempted-outcome-unknown", detail=res.error,
+            )
+            return self.finding(
+                Verdict.ERROR,
+                evidence=res.evidence(),
+                notes=(
+                    f"⚠ {_CLEANUP_FAIL_MARKER}: the registration POST was delivered but the "
+                    f"exchange broke before we read a reply ({res.error}). The server may "
+                    "have created a client, and because no reply arrived its client_id is "
+                    f"unknowable — inspect {endpoint} manually. Cleanup was not attempted."
+                ),
+            )
 
         reg = res.json if isinstance(res.json, dict) else {}
         client_id = reg.get("client_id")
@@ -858,8 +892,38 @@ class OpenDcr(Detector):
         # registration, and treating it as "not created" is exactly the silent-orphan
         # outcome the paragraph above exists to prevent.
         created = res.status is not None and 200 <= res.status < 300
+
+        # Journal the id the instant we have one, BEFORE cleanup is awaited. Until now it
+        # lived only in this coroutine's frame until the Finding was serialised, so a
+        # cancellation during the RFC 7592 DELETE — which `run_dcr.py`'s per-server timeout
+        # can cause, since its 25 s budget spans POST *and* DELETE — destroyed the only
+        # record of a client we had just created on someone else's server.
+        #
+        # Gated on `created`, not merely on the id being present. A non-2xx reply may name a
+        # client_id without having created anything — a 409 rejecting our metadata can echo
+        # an existing one — and journalling that as `created` would both fabricate an
+        # obligation and leave it unclosed, since the branches below never reach cleanup.
+        # Such an id is still recorded, under a stage that claims nothing.
+        if created and client_id:
+            self._journal(ctx, endpoint, client_id=str(client_id), stage="created")
+        elif client_id:
+            self._journal(
+                ctx, endpoint, client_id=str(client_id),
+                stage="client-id-in-non-success-reply",
+                detail=f"HTTP {res.status}; not treated as a creation",
+            )
+
         if created and client_id:
             cleanup = await self._cleanup(probe, reg, ctx.target.url)
+            # Close the journal entry either way, so a reader can tell a discharged
+            # obligation from an outstanding one without re-deriving it from prose.
+            self._journal(
+                ctx, endpoint, client_id=str(client_id),
+                stage=(
+                    "cleanup-failed" if _CLEANUP_FAIL_MARKER in cleanup else "deleted"
+                ),
+                detail=cleanup,
+            )
             return self.finding(
                 Verdict.HAS_GAP,
                 evidence=f"{res.request_line()}\n-> HTTP {res.status}, client_id={client_id!r}",
@@ -870,6 +934,10 @@ class OpenDcr(Detector):
                 ),
             )
         if created:
+            self._journal(
+                ctx, endpoint, client_id=None, stage="created-unparseable-body",
+                detail=f"HTTP {res.status}",
+            )
             return self.finding(
                 Verdict.HAS_GAP,
                 evidence=res.evidence(),
@@ -897,6 +965,24 @@ class OpenDcr(Detector):
                     "a WAF/bot filter, so it is not evidence either way."
                 ),
             )
+        if client_id:
+            # A non-2xx reply that nonetheless names a client id. It may be echoing one that
+            # already existed, or the server may have created ours and then reported a
+            # non-success status — a redirect after creating is a real pattern. We cannot
+            # tell from here, and the note used to read "without a client_id" while printing
+            # the id in the evidence directly beneath, so the operator was told the opposite
+            # of what had been observed.
+            return self.finding(
+                Verdict.INCONCLUSIVE,
+                evidence=res.evidence(),
+                notes=(
+                    f"⚠ {_CLEANUP_FAIL_MARKER}: the registration POST returned HTTP "
+                    f"{res.status}, which is not success, yet the reply names "
+                    f"client_id={str(client_id)!r}. We cannot tell whether the server "
+                    "created that client or is echoing one that already existed, so no "
+                    f"cleanup was attempted. Check {endpoint} manually."
+                ),
+            )
         return self.finding(
             Verdict.INCONCLUSIVE,
             evidence=res.evidence(),
@@ -905,6 +991,42 @@ class OpenDcr(Detector):
                 "input validation rather than an auth decision."
             ),
         )
+
+    def _journal(
+        self,
+        ctx: ProbeContext,
+        endpoint: str,
+        *,
+        client_id: str | None,
+        stage: str,
+        detail: str = "",
+    ) -> None:
+        """Hand one durable record of this write to `ctx.write_journal`, if one was given.
+
+        Nothing in `mcpauth/` chooses a path or touches the filesystem — the caller supplies
+        the sink (`reports/run_dcr.py` appends JSON Lines and fsyncs). The point is only
+        *when* this is called: at each moment the obligation changes, not once at the end.
+        Before this existed the sole record of a created client was the returned `Finding`,
+        so anything that stopped the process first — a per-server timeout cancelling the
+        coroutine mid-cleanup, a Ctrl-C, an OOM — destroyed it.
+
+        Never raises: a failing journal must not turn a completed scan into an ERROR, and
+        the Finding still carries everything the journal would have.
+        """
+        sink = getattr(ctx, "write_journal", None)
+        if sink is None:
+            return
+        try:
+            sink({
+                "gap_id": self.gap_id,
+                "target": ctx.target.url,
+                "registration_endpoint": endpoint,
+                "client_id": client_id,
+                "stage": stage,
+                "detail": detail,
+            })
+        except Exception as e:  # noqa: BLE001 — the Finding is still authoritative
+            ctx.discovery_notes.append(f"write journal failed ({type(e).__name__}: {e})")
 
     async def _cleanup(self, probe: "Probe", reg: dict, target_url: str) -> str:
         """Best-effort RFC 7592 delete of the client we just created. Returns a note.
