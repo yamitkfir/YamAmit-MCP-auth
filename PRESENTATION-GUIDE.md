@@ -378,7 +378,7 @@ Each entry follows the same shape: **what we send · what we look at · how we d
 
 ### Tier 1 — one request, no login, and we can tell
 
-#### #1 `no-authentication-remote` — severity **critical**
+#### #1 `no-authentication-remote` — severity **medium**
 
 *Rule: MCP Transports §Security — servers SHOULD authenticate every connection, and a protected one MUST answer `401`.*
 
@@ -399,7 +399,7 @@ Each entry follows the same shape: **what we send · what we look at · how we d
 
 **What counts as a real refusal.** This is the sharpest judgement call in the project. A `401` is unambiguous. **A `403` is not** — it is also what a firewall, a country block, a bot filter, or an IP denylist returns. The tool used to credit any `403` as proof that the server enforces login, which turned *a blocked scan* into a clean bill of health on our most important check — the worst possible direction for a mistake. A `403` now counts only with corroboration: a `WWW-Authenticate` header, or a genuine OAuth error code in the body.
 
-If asked what that fix changed in practice, the precise answer is **one verdict**: a server whose bare `403` body said `missing api key` had been credited as enforcing login, and is now `INCONCLUSIVE`. (`NO_GAP` on this check fell 46 → 42 between two *earlier* scans — not the two runs behind §7's table — but the other three moves had unrelated causes: a `308` redirect we no longer follow, a legacy SSE endpoint answering `404`, and one server that simply opened up.)
+If asked what that fix changed in practice, the precise answer is **one verdict**: a server whose bare `403` body said `missing api key` had been credited as enforcing login, and is now `INCONCLUSIVE`. (`NO_GAP` on this check fell 46 → 42 between two *earlier* scans — not the run behind §7's table — but the other three moves had unrelated causes: a `308` redirect we no longer follow, a legacy SSE endpoint answering `404`, and one server that simply opened up.)
 
 **The part of that fix still too generous, and you should say it before you are asked.** *Any* `WWW-Authenticate` header counts, including `Negotiate`, `NTLM` or `Basic realm="corp"` — those are Windows sign-on middleware sitting in front of the server. A request stopped there never reached the MCP server at all, so it tells us nothing about its login. And we read that header *before* the body, which defeats the body rule that exists to reject exactly this. No published number is affected — none of the 83 answered `403` with such a header, we checked — but the hole is real, and it is on our most important check.
 
