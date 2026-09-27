@@ -1,0 +1,197 @@
+{
+  "report_version": 2,
+  "target": "https://mcp.gondola.ai/mcp",
+  "reachable": true,
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "gondola",
+    "title": "Gondola",
+    "version": "0.1.6-go",
+    "websiteUrl": "https://www.gondola.ai",
+    "icons": [
+      {
+        "src": "https://www.gondola.ai/assets/logos/logomark-gold.png",
+        "mimeType": "image/png",
+        "sizes": [
+          "2048x2048"
+        ]
+      }
+    ]
+  },
+  "detectors_run": [
+    "no-authentication-remote",
+    "no-tls-transport",
+    "missing-www-authenticate",
+    "missing-protected-resource-metadata",
+    "session-id-in-url",
+    "predictable-session-id",
+    "origin-not-validated",
+    "cors-misconfiguration",
+    "auth-endpoints-not-https",
+    "missing-as-metadata",
+    "implicit-flow-enabled",
+    "open-dcr",
+    "unauthenticated-tool-invocation",
+    "improper-redirect-uri-validation"
+  ],
+  "tiers_selected": "all",
+  "excluded": [],
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2025-06-18, session=yes",
+    "notifications/initialized -> HTTP 202",
+    "PRM GET https://mcp.gondola.ai/.well-known/oauth-protected-resource -> HTTP 200",
+    "PRM `resource` is 'https://mcp.gondola.ai' but we scanned 'https://mcp.gondola.ai/mcp'.",
+    "PRM found at https://mcp.gondola.ai/.well-known/oauth-protected-resource (source=www-authenticate): 1 authorization_servers.",
+    "AS metadata GET https://www.gondola.ai/.well-known/oauth-authorization-server -> HTTP 200",
+    "AS metadata resolved at https://www.gondola.ai/.well-known/oauth-authorization-server (source=prm-listed).",
+    "DELETE session -> HTTP 401"
+  ],
+  "summary": {
+    "HAS_GAP": 3,
+    "NO_GAP": 9,
+    "NOT_APPLICABLE": 1,
+    "INCONCLUSIVE": 1
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://mcp.gondola.ai/mcp (JSON-RPC tools/list) with NO Authorization header Mcp-Session-Id: H6DNIJHQDZ7K64MOM36F73QVJQ\nRESPONSE: HTTP 200\nevent: message\ndata: {\"id\":\"8e631ddd-101d-442a-92f4-6a5d6be2be0b\",\"jsonrpc\":\"2.0\",\"result\":{\"tools\":[{\"annotations\":{\"destructiveHint\":true,\"openWorldHint\":true,\"readOnlyHint\":false,\"title\":\"Book a flight\"},\"description\":\"Book a prepared flight only after the traveler explicitly confirms the exact current quote, total, currency, and consent version. Use the handoff_id and quote_id returned by prep \u2026[truncated]",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 44 tool(s) to a caller with no credential \u2014 the tool catalog is exposed without login (capability disclosure). Whether these tools can be invoked without a credential was not tested (we never send tools/call)."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: GET https://mcp.gondola.ai/mcp with NO Authorization header\nRESPONSE: HTTP 401\n{\"error\":\"authentication required\"}\n",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": "Endpoint is https and its certificate validated."
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://mcp.gondola.ai/mcp (JSON-RPC tools/list) with NO Authorization header Mcp-Session-Id: H6DNIJHQDZ7K64MOM36F73QVJQ\nRESPONSE: HTTP 200\nevent: message\ndata: {\"id\":\"c5d8c894-8ec1-4d8b-850d-0450f9a69ed2\",\"jsonrpc\":\"2.0\",\"result\":{\"tools\":[{\"annotations\":{\"destructiveHint\":true,\"openWorldHint\":true,\"readOnlyHint\":false,\"title\":\"Book a flight\"},\"description\":\"Book a prepared flight only after the traveler explicitly confirms the exact current quote, total, currency, and consent version. Use the handoff_id and quote_id returned by prep \u2026[truncated]",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "No authentication challenge to inspect (HTTP 200 is not an authentication challenge), so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "PRM at https://mcp.gondola.ai/.well-known/oauth-protected-resource",
+      "spec_reference": "MCP Authorization: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers. RFC 9728 \u00a73.1 locates it by inserting the well-known suffix before the resource path.",
+      "notes": "authorization_servers present (1 entry)."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "Mcp-Session-Id header present (len=26)",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "Session conveyed via header per Streamable HTTP."
+    },
+    {
+      "gap_id": "predictable-session-id",
+      "name": "Predictable session identifier",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "observed session ids: ['H6DNIJHQDZ7K64MOM36F73QVJQ', 'S3R7SKXT3WGQYK7FEO4EWLRF5B', 'RHD7U44JY2S2S7BY5WK7EAH5LQ', 'EZ2QVXP3ETEXNEWQT5WYCDVJUJ', '4KFP5CXRXBQSFFDV4RDBE7J32G']",
+      "spec_reference": "MCP Transports \u00a7Session Management: session id SHOULD be globally unique and cryptographically secure. Security Best Practices \u00a7Session Hijacking: servers MUST use secure, non-deterministic session IDs; avoid predictable/sequential ones.",
+      "notes": "5 distinct session ids, weakest 26 chars of mixed-case alphanumeric (62 symbols) \u2248 155 bits, no constant/sequential pattern (checked determinism, counter sequences, shared-prefix counters, and entropy)."
+    },
+    {
+      "gap_id": "origin-not-validated",
+      "name": "Origin header not validated (DNS rebinding)",
+      "verdict": "HAS_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: POST https://mcp.gondola.ai/mcp (JSON-RPC initialize) with NO Authorization header Origin: https://evil.attacker.example\nRESPONSE: HTTP 200\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"25f0a715-5c0a-4a69-82bb-742444adffa3\",\"result\":{\"capabilities\":{\"tools\":{\"listChanged\":true}},\"instructions\":\"Gondola shows hotels with BOTH cash and loyalty-points pricing, plus a cents-per-point (CPP) value, so you can recommend the best-value way to pay. Flights can be award-priced on request: set points: true on search_flights when the traveler asks  \u2026[truncated]",
+      "spec_reference": "MCP Transports \u00a7Security Warning: servers MUST validate the Origin header on all incoming connections to prevent DNS rebinding attacks.",
+      "notes": "initialize from forged Origin 'https://evil.attacker.example' succeeded (HTTP 200 with a valid result) \u2014 the server accepts cross-origin requests it should reject."
+    },
+    {
+      "gap_id": "cors-misconfiguration",
+      "name": "CORS reflects arbitrary origin with credentials",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "OPTIONS https://mcp.gondola.ai/mcp with NO Authorization header Origin: https://evil.attacker.example\nAccess-Control-Allow-Origin: *; Allow-Credentials: False",
+      "spec_reference": "Not in the MCP spec. General web security: reflecting an arbitrary Origin in Access-Control-Allow-Origin together with Access-Control-Allow-Credentials: true lets any website make credentialed cross-origin calls.",
+      "notes": "Wildcard Access-Control-Allow-Origin: browsers will not send credentials to it, so no credentialed cross-origin theft is possible. Note that if this server needs no authentication at all (see no-authentication-remote), any web page can still call it directly."
+    },
+    {
+      "gap_id": "auth-endpoints-not-https",
+      "name": "OAuth endpoint not served over HTTPS",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "https://www.gondola.ai; issuer=https://www.gondola.ai; authorization_endpoint=https://www.gondola.ai/oauth/authorize; token_endpoint=https://www.gondola.ai/api/oauth/token; registration_endpoint=https://www.gondola.ai/api/oauth/register; revocation_endpoint=https://www.gondola.ai/api/oauth/revoke",
+      "spec_reference": "OAuth 2.1 \u00a71.5 & MCP Authorization \u00a72.8: all OAuth protocol URLs MUST use https (loopback exempt). RFC 8414 mandates https for issuer / jwks_uri / metadata path.",
+      "notes": "All 6 discovered OAuth URL(s) use https or loopback."
+    },
+    {
+      "gap_id": "missing-as-metadata",
+      "name": "Missing OAuth Authorization Server Metadata (RFC 8414)",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "AS metadata at https://www.gondola.ai/.well-known/oauth-authorization-server (source=prm-listed)",
+      "spec_reference": "MCP Authorization \u00a72.3.2: clients MUST follow RFC 8414 to obtain AS metadata; authorization servers MUST provide it. Distinct from RFC 9728 PRM (#4).",
+      "notes": "RFC 8414 Authorization Server Metadata resolved successfully."
+    },
+    {
+      "gap_id": "implicit-flow-enabled",
+      "name": "Implicit grant advertised (forbidden by OAuth 2.1)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "response_types_supported=['code']",
+      "spec_reference": "OAuth 2.1 \u00a71.8 removes the implicit grant; MCP \u00a72.3 mandates OAuth 2.1. RFC 8414: response_types_supported 'token' or grant_types_supported 'implicit' advertise it.",
+      "notes": "response_types_supported has no 'token' and no 'implicit' grant advertised \u2014 implicit grant not usable."
+    },
+    {
+      "gap_id": "open-dcr",
+      "name": "Open Dynamic Client Registration",
+      "verdict": "HAS_GAP",
+      "severity": "high",
+      "evidence": "POST https://www.gondola.ai/api/oauth/register with NO Authorization header\n-> HTTP 201, client_id='gond_mcp_xRRRCNx-KB0oJNBnN105y9neuA9pCQjU'",
+      "spec_reference": "RFC 7591 \u00a73: open registration is permitted (SHOULD), but an unauthenticated registration endpoint is the prerequisite for the confused-deputy attack and for registration flooding. Cleanup uses RFC 7592 \u00a72.3 (DELETE -> 204).",
+      "notes": "Registration succeeded with no initial access token \u2014 anyone can mint a client. RFC 7591 permits this, but it enables confused-deputy; consider an allowlist or pre-shared registration token. \u26a0 MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='gond_mcp_xRRRCNx-KB0oJNBnN105y9neuA9pCQjU') cannot be deleted programmatically \u2014 deprovision it manually if the server is not yours."
+    },
+    {
+      "gap_id": "unauthenticated-tool-invocation",
+      "name": "Tool invocation without authentication",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: POST https://mcp.gondola.ai/mcp (JSON-RPC tools/call) with NO Authorization header Mcp-Session-Id: H6DNIJHQDZ7K64MOM36F73QVJQ\nRESPONSE: HTTP 401\n{\"error\":\"authentication required\"}\n",
+      "spec_reference": "MCP Authorization: a protected MCP server MUST validate a bearer token before processing a request and MUST answer 401 when authorization is required. tools/call is a privileged operation, so reaching its dispatch with no credential means the invocation path is unauthenticated.",
+      "notes": "Server rejected an unauthenticated tools/call (HTTP 401 \u2014 an unambiguous authentication challenge); the invocation path requires authentication."
+    },
+    {
+      "gap_id": "improper-redirect-uri-validation",
+      "name": "Authorization server accepts an unregistered redirect_uri",
+      "verdict": "INCONCLUSIVE",
+      "severity": "high",
+      "evidence": "REQUEST: GET https://www.gondola.ai/oauth/authorize?response_type=code&client_id=gond_mcp_E-U56N_OzyV9elZqQ2TziugBafG24aha&redirect_uri=https%3A%2F%2Fmcpauth-attacker.example%2Fsteal&state=mcpauth-redirect-probe with NO Authorization header\nRESPONSE: HTTP 200 (redirected to https://www.gondola.ai/oauth/authorize?response_type=code&client_id=gond_mcp_E-U56N_OzyV9elZqQ2TziugBafG24aha&redirect_uri=https://mcpauth-attacker.example/steal&state=mcpauth-redirect-probe)\n<!DOCTYPE html><html lang=\"en\" class=\"__className_0ffb60 __variable_2ca027 bg-background\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/761056e6396cb3c4.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" href=\"/_next/static/css/84b8246575706639.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" hre \u2026[truncated]",
+      "spec_reference": "MCP Authorization / OAuth 2.1 \u00a77.5.4: clients MUST pre-register redirect URIs and the authorization server MUST validate exact redirect URIs against pre-registered values, and MUST NOT redirect to an invalid redirection URI.",
+      "notes": "The authorization server answered HTTP 200 (likely a login or consent page); whether it validates redirect_uri cannot be determined without completing a login. \u26a0 MANUAL CLEANUP NEEDED: server returned no RFC 7592 management fields (registration_client_uri / registration_access_token), so the client we created (client_id='gond_mcp_E-U56N_OzyV9elZqQ2TziugBafG24aha') cannot be deleted programmatically \u2014 deprovision it manually if the server is not yours."
+    }
+  ],
+  "oauth": {
+    "prm_url": "https://mcp.gondola.ai/.well-known/oauth-protected-resource",
+    "prm_source": "www-authenticate",
+    "authorization_servers": [
+      "https://www.gondola.ai"
+    ],
+    "as_metadata_url": "https://www.gondola.ai/.well-known/oauth-authorization-server",
+    "as_metadata_usable": true,
+    "unresolved_servers": [],
+    "blocked_urls": [],
+    "external_hosts_contacted": [
+      "www.gondola.ai"
+    ]
+  }
+}

@@ -5,9 +5,9 @@
 > An **MCP server** (Model Context Protocol server — a program that offers *tools*, like "search the documents" or "run this query", to an AI assistant over the internet) is supposed to make a caller **log in** before it will hand over its tools. 
 > The protocol's own rules say how: which refusal to send, where to publish the login instructions, which login styles are allowed.
 >
-> we built a scanner that asks one server 12 separate questions about its login setup — without ever logging in — and answers each one with the evidence attached. We ran it against 88 public servers.
+> we built a scanner that asks one server 14 separate questions about its login setup — without ever logging in — and answers each one with the evidence attached. We ran it against 83 public servers.
 >
-> **30 of the 88 need no login at all to list their tools.** 456 tools, reachable by a stranger.
+> **28 of the 83 answer `tools/list` with no login.** 438 tools, reachable by a stranger — and check #13 shows 22 of them let a stranger *run* a tool too, not just list it.
 
 ---
 
@@ -53,7 +53,7 @@ Getting into a protected MCP server takes 3 steps:
 2. **Go and get a token**: read the login-information page, read the login server's own description page, send the user to manually log in, receive the token from AS.
 3. Ask again, **carrying the token**. Only now does the conversation actually open.
 
-**We do step 1, plus the reading half of step 2, and nothing else.** Both description pages are public and need no token — that is what makes checks #4 and #9–#12 possible at all. We never send anyone to log in, never obtain a token, never reach step 3.
+**We do step 1, plus the reading half of step 2, and nothing else.** Both description pages are public and need no token — that is what makes checks #4, #9–#12 and #14 possible at all. We never send anyone to log in, never obtain a token, never reach step 3.
 
 So every verdict in this project describes **what a server does for a caller holding nothing.** Against a wide-open server, step 1 simply succeeds — which is exactly what check #1 reports (that's wrong by the protocol TODO confirm that claim).
 
@@ -66,7 +66,7 @@ So every verdict in this project describes **what a server does for a caller hol
   ┌─────────────────────────────────────────────────────────────┐
   │ 1. VALIDATE the target                                      │
   │    Is it a URL? http / https / stdio only. A typo must not  │
-  │    silently become twelve confident "not applicable"s.      │
+  │    silently become fourteen confident "not applicable"s.    │
   └─────────────────────────────────────────────────────────────┘
         │
         ▼
@@ -94,7 +94,7 @@ So every verdict in this project describes **what a server does for a caller hol
         ▼
   ┌─────────────────────────────────────────────────────────────┐
   │ 4. RUN THE CHECKS CONCURRENTLY                               │
-  │    12 with --unsafe-writes.         							           │
+  │    12 by default; 14 with --unsafe-writes.                   │
   │    Each reads only the shared context. None reads another's  │
   │    answer. So order cannot change the result.                │
   │    A check that crashes becomes an ERROR verdict, not a      │
@@ -105,13 +105,13 @@ So every verdict in this project describes **what a server does for a caller hol
   ┌─────────────────────────────────────────────────────────────┐
   │ 5. RELEASE the session (DELETE), then BUILD THE REPORT       │
   │    (check #7's own session is left behind — see §5)          │
-  │    12 findings + the discovery trail												 │
+  │    12–14 findings + the discovery trail                      │
   │    + a record of what was run and what was skipped           │
   │    Exit code: 0 clean · 1 gap found · 2 scan failed · 3 typo │
   └─────────────────────────────────────────────────────────────┘
 ```
 
-A full read-only scan is **18 requests** for a typical server (20 with write enabled).
+A full read-only scan is **19 requests** for a typical server (about 24 with both write checks enabled).
 
 note: **we do nothing about being told to slow down.** All the checks fire at once, and if a server starts throttling us, those refusals land in branches that read them as "the header wasn't there" and produce a confident `NO_GAP` or `NOT_APPLICABLE`. It needs a request budget per server, and it does not have one.
 
@@ -143,7 +143,7 @@ A **session tag** (`Mcp-Session-Id` — a temporary label tying your back-and-fo
 
 ### Every answer carries its evidence
 
-Each finding records **the request we sent as well as the reply we got** — the URL, the method, which headers we chose, whether an `Authorization` header was present (it never is), and the response body. A verdict saying "the server answered a privileged call with no credential" is only auditable if the report also shows what was asked. All 88 servers' raw output is committed to the repository.
+Each finding records **the request we sent as well as the reply we got** — the URL, the method, which headers we chose, whether an `Authorization` header was present (it never is), and the response body. A verdict saying "the server answered a privileged call with no credential" is only auditable if the report also shows what was asked. All 83 servers' raw output is committed to the repository.
 
 Credentials in a reply (`client_secret`, `registration_access_token`, and similar) are **replaced with a placeholder before anything is written to disk** — the field *name* stays visible, because the fact that a secret was issued is itself evidence.
 
@@ -174,7 +174,7 @@ Two mechanisms here, both of which changed our published numbers:
 - **A reply must be read in a loop.** The function that reads from a connection returns *up to* the amount you ask for — whatever has arrived so far — not the amount you asked for. We called it once and assumed we had everything. One server sent 91,703 characters listing its tools; we kept 8,183, which no longer parsed as a document, so the check gave up and said "don't know" about a server that had just listed 70 tools to a stranger. **Six servers were hidden this way.**
 - **An SSE stream never ends.** SSE (Server-Sent Events — an older style where the server holds the line open and keeps talking) has no end-of-reply to wait for. Waiting for one burns the whole timeout and then throws away the bytes that already contained the answer. So those reads are capped, and we keep what arrived.
 
-### One shared lookup, not twelve
+### One shared lookup, not fourteen
 
 Finding the login takes two hops: the MCP server's page names the login server, and the login server's own page describes itself. They are two pages rather than one because **the MCP server and the login server are often run by different companies**, and the MCP server cannot speak for someone else's login service.
 
@@ -190,21 +190,21 @@ Note the limit of the sharing: it covers the *login-metadata lookup*, not every 
 
 ### Nothing durable changes by default — with one leak to own
 
-Eleven of the twelve checks create nothing you would have to go and delete. The twelfth (#12) really creates something that persists, and it is **off unless you explicitly pass `--unsafe-writes`**.
+Twelve of the fourteen checks create nothing you would have to go and delete. The other two — #12 `open-dcr` and #14 `improper-redirect-uri-validation` — really create something that persists (each registers a client), and both are **off unless you explicitly pass `--unsafe-writes`**.
 
 But do not say "read-only", because it is not quite true. Every `initialize` opens a short-lived MCP session, and the scan hands its own back with an HTTP `DELETE`. **Check #7 opens one more and never releases it** — so scanning a session-based server leaves exactly one session parked on it. In our own 2026-09-18 run, all 10 session-issuing servers took one. Check #6 does release the four it opens, but without the protocol-version header, so a server that insists on that header can refuse all four. A leftover session holds nothing but throwaway greeting data and expires on its own — but it is a bug, not a decision, and it is better volunteered than discovered.
 
 ### When the write does create something, we write it down before trying to undo it
 
-The moment #12 creates a registration, its identifier is appended to a file on disk and forced out immediately — `mcpauth-writes.jsonl` from the command line, `reports/raw_dcr/write_journal.jsonl` from the bulk runner — **before any attempt to delete it**.
+The moment #12 creates a registration, its identifier is appended to a file on disk and forced out immediately — `mcpauth-writes.jsonl` from the command line, and a `write_journal.jsonl` beside the run's raw output from the bulk runner (e.g. `reports/raw-rescan-2026-09-27/write_journal.jsonl`) — **before any attempt to delete it**.
 
-That ordering is the whole point. The report is only produced once every server has been probed, and a run across 88 servers takes many minutes, so an interruption anywhere in between — Ctrl-C, a closed laptop, a timeout — used to discard every identifier gathered so far. Since **none** of the 38 cleanups actually succeeded, those are permanent registrations on other people's servers that nobody could afterwards name. The record has to survive whatever killed the run, so each line is pushed to disk as it is written rather than held in memory.
+That ordering is the whole point. The report is only produced once every server has been probed, and a run across 83 servers takes many minutes, so an interruption anywhere in between — Ctrl-C, a closed laptop, a timeout — used to discard every identifier gathered so far. Since **none** of the 38 cleanups actually succeeded, those are permanent registrations on other people's servers that nobody could afterwards name. The record has to survive whatever killed the run, so each line is pushed to disk as it is written rather than held in memory.
 
 ---
 
 ## 6. How we know the checks work
 
-**`uv run pytest -q` → 201 tests pass.**
+**`uv run pytest -q` → 213 tests pass.**
 
 The core idea: **no single server can exercise every possible answer.** A server with no login can never demonstrate what a *badly worded* "log in first" reply looks like. So we wrote one practice server per posture and run them locally:
 
@@ -218,7 +218,7 @@ The core idea: **no single server can exercise every possible answer.** A server
 | `stateful_open_server.py` | **Wide open, yet session-based** (see below) |
 | `subpath_prm_server.py` | **Correct on all the discovery checks, but hosted on a sub-path** (see below) |
 
-**Eleven of the twelve checks are considered finished only when they say `HAS_GAP` against the deliberately-broken server and `NO_GAP` against the deliberately-correct one.** A suite of only broken servers cannot catch a check that cries "gap!" at everything.
+**A check is considered finished only when it says `HAS_GAP` against a deliberately-broken server and `NO_GAP` against a deliberately-correct one** — a suite of only broken servers cannot catch a check that cries "gap!" at everything. Twelve of the fourteen meet this against the practice servers; the two exceptions are #2 `no-tls` (no live test at all — loopback-only sandbox, so its logic is unit-tested) and #14 `improper-redirect-uri-validation` (verified against a local demo login server plus unit tests covering both its HAS_GAP and NO_GAP branches, rather than a committed sandbox pair).
 
 **The exception is #2 (`no-tls-transport`)**, and you should volunteer it: every practice server runs on `http://127.0.0.1`, which the loopback exemption makes `NOT_APPLICABLE`, so building that pair would need a real certificate. Its decision logic is unit-tested instead.
 
@@ -229,9 +229,9 @@ The core idea: **no single server can exercise every possible answer.** A server
 
 **The suite has three layers**, which is a good structure to show:
 
-- **35 tests against the practice servers** (`test_tier1.py` 14, `test_tier2.py` 21) — 32 of them boot a real server and scan it, checking the verdict for each gap on each posture where that posture can produce a meaningful answer. The tables are deliberately sparse: a stateless server cannot demonstrate a session gap. The remaining 3 test the encryption classifier directly, since every practice server is loopback-exempt.
+- **38 tests against the practice servers** (`test_tier1.py` 17, `test_tier2.py` 21) — 35 of them boot a real server and scan it, checking the verdict for each gap on each posture where that posture can produce a meaningful answer. The tables are deliberately sparse: a stateless server cannot demonstrate a session gap. The remaining 3 test the encryption classifier directly, since every practice server is loopback-exempt.
 - **111 unit tests** of the individual judgement calls with no network involved: is this session tag guessable, is this address unencrypted, which addresses should we try, is this address safe to fetch, does a name that resolves into a private network get refused, was this reply really a login refusal, how do we read an SSE stream, does the version gate compare dates correctly.
-- **55 regression tests** covering the roughly **33** bugs we have actually found and fixed, each pinning the wrong answer so it cannot come back. Not one test per bug: five cover the handshake bug alone, six cover the address guard. Each has been checked to **fail** against the code as it stood before its fix — a regression test that passes either way pins nothing.
+- **64 regression / behaviour tests** — 55 covering the roughly **33** bugs we have actually found and fixed (each pinning the wrong answer so it cannot come back; not one test per bug — five cover the handshake bug alone, six the address guard), plus 9 pinning the two new checks (#13, #14) across their verdict branches. Each bug-regression test has been checked to **fail** against the code as it stood before its fix — one that passes either way pins nothing.
 
 That third layer is the one to point at if asked about engineering quality. Most of the mechanisms in §5 have a test named after the bug that motivated them.
 
@@ -239,44 +239,50 @@ That third layer is the one to point at if asked about engineering quality. Most
 
 ## 7. What we found
 
-**88 public servers, one read-only scan each, all 11 non-writing checks, 2026-09-18.** The raw machine-readable output for every server is committed. Every number below was recalculated from that raw output rather than copied from an earlier write-up. The `open-dcr` figures come from a separate run on 2026-09-21, because that check writes.
+**83 public servers, one consistent scan each on 2026-09-27, all 14 checks (including the two write checks).** The raw machine-readable output for every server is committed in `reports/raw-rescan-2026-09-27/`, with the write journal alongside. Every number below was recalculated from that raw output. There are **no `ERROR` verdicts** — the five endpoints that had gone dead in earlier runs were removed from the list.
 
 | Gap | HAS_GAP | NO_GAP | N/A | INCONCLUSIVE | ERROR | Protocol violation if `HAS_GAP`? |
 |---|--:|--:|--:|--:|--:|---|
-| `no-authentication-remote` | **30** | 42 | 0 | 12 | 4 | No — authentication is a `SHOULD` |
-| `no-tls-transport` | 0 | 83 | 0 | 5 | 0 | Conditional — if OAuth is used |
-| `missing-www-authenticate` | 0 | 32 | 42 | 10 | 4 | Yes — `2025-06-18` `MUST` |
-| `missing-protected-resource-metadata` | 22 | 41 | 0 | 25 | 0 | Conditional — if OAuth is used |
-| `session-id-in-url` | 0 | 10 | 0 | 74 | 4 | Not proven — a session ID is not an access token |
-| `predictable-session-id` | 0 | 10 | 20 | 58 | 0 | Yes — MCP `MUST` |
-| `origin-not-validated` | 26 | 10 | 0 | 48 | 4 | Yes — MCP `MUST` |
-| `cors-misconfiguration` | 2 | 68 | 0 | 14 | 4 | No — outside MCP |
-| `auth-endpoints-not-https` | 0 | 52 | 36 | 0 | 0 | Yes — OAuth endpoints `MUST` use HTTPS |
-| `missing-as-metadata` | 13 | 53 | 0 | 22 | 0 | Conditional — if OAuth is used |
-| `implicit-flow-enabled` | 0 | 52 | 35 | 1 | 0 | Not proven — legacy support may coexist |
-| `open-dcr` | **38** | 0 | 39 | 10 | 1 | No — explicitly permitted |
+| `no-authentication-remote` | **28** | 42 | 0 | 13 | 0 | No — authentication is a `SHOULD` |
+| `no-tls-transport` | 0 | 82 | 0 | 1 | 0 | Conditional — if OAuth is used |
+| `missing-www-authenticate` | 0 | 32 | 41 | 10 | 0 | Yes — `2025-06-18` `MUST` |
+| `missing-protected-resource-metadata` | 21 | 41 | 0 | 21 | 0 | Conditional — if OAuth is used |
+| `session-id-in-url` | 0 | 10 | 0 | 73 | 0 | Not proven — a session ID is not an access token |
+| `predictable-session-id` | 0 | 10 | 18 | 55 | 0 | Yes — MCP `MUST` |
+| `origin-not-validated` | 24 | 10 | 0 | 49 | 0 | Yes — MCP `MUST` |
+| `cors-misconfiguration` | 2 | 67 | 0 | 14 | 0 | No — outside MCP |
+| `auth-endpoints-not-https` | 0 | 52 | 31 | 0 | 0 | Yes — OAuth endpoints `MUST` use HTTPS |
+| `missing-as-metadata` | 12 | 53 | 0 | 18 | 0 | Conditional — if OAuth is used |
+| `implicit-flow-enabled` | 0 | 52 | 30 | 1 | 0 | Not proven — legacy support may coexist |
+| `open-dcr` | **38** | 0 | 35 | 10 | 0 | No — explicitly permitted |
+| `unauthenticated-tool-invocation` | **22** | 48 | 0 | 13 | 0 | No — authenticating is a `SHOULD` |
+| `improper-redirect-uri-validation` | 0 | 23 | 36 | 24 | 0 | Yes — OAuth 2.1 `MUST` (none found) |
 
 Here, **Yes** means the observation directly demonstrates a broken `MUST` or `MUST NOT`. **Conditional** means the requirement applies only when the optional OAuth authorization mechanism is being used. **Not proven** means the check found a security concern, but its evidence alone does not establish a protocol violation.
 
-**One correction to carry with this table.** The two metadata rows are each at least one too high. We stopped following redirects — correct, because the whole rule is about *which* host published a document — but a redirect on a metadata address is still graded "the document is absent". `hf.co/mcp` answers `307` on all four addresses we try, and what it redirects to is a **fully compliant** document; our own earlier scans graded it `NO_GAP` with that real document as the evidence. So `missing-protected-resource-metadata` (22) and `missing-as-metadata` (13) each contain at least this one false accusation. Volunteer it — it is the kind of thing an examiner finds by clicking one link.
+**One correction to carry with this table.** The two metadata rows are each at least one too high. We stopped following redirects — correct, because the whole rule is about *which* host published a document — but a redirect on a metadata address is still graded "the document is absent". `hf.co/mcp` answers `307` on the addresses we try, and what it redirects to is a **fully compliant** document; our own earlier scans graded it `NO_GAP` with that real document as the evidence. So `missing-protected-resource-metadata` (21) and `missing-as-metadata` (12) each contain at least this one false accusation (`huggingface`). Volunteer it — it is the kind of thing an examiner finds by clicking one link.
 
 ### The three findings to actually talk about
 
-1. **30 of 88 need no login to list their tools — 456 tools in total.** No rule is broken, since authenticating is only a SHOULD; what is notable is that nothing stops a stranger asking what a server can do. The biggest are `dock` (70 tools), `switch` (61), `gondola` (39), `nullary` (35). **They are concentrated among the lesser-known entries** — most recognisable vendors demanded a login: Stripe, Notion, Sentry, Linear, GitHub, PayPal, Square, Wix, Zapier, Atlassian, Neon, Grafana, Prisma, Vercel, Webflow.
+1. **28 of 83 answer `tools/list` with no login — 438 tools in total.** No rule is broken, since authenticating is only a SHOULD; what is notable is that nothing stops a stranger asking what a server can do. The biggest are `dock` (71 tools), `switch` (69), `gondola` (44), `nullary` (35). **They are concentrated among the lesser-known entries** — most recognisable vendors demanded a login: Stripe, Notion, Sentry, Linear, GitHub, PayPal, Square, Wix, Zapier, Atlassian, Neon, Grafana, Prisma, Vercel, Webflow.
 
-   **Own the exceptions, because they are checkable and they make the point sharper.** Cloudflare gated four of its five servers but left `docs.mcp.cloudflare.com` open (2 tools). HuggingFace's `hf.co/mcp` is open (4 tools) — and it is also the server carrying the metadata false positive noted under the table, so if you name it, name both facts. Semgrep is `INCONCLUSIVE` rather than protected — its endpoint answered `404` to our POST, so we could not tell either way. DeepWiki and EdgeOne are open **on purpose**. EdgeOne is the most interesting single case, because its one freely-available tool, `deploy-html`, **changes things** rather than only reading them.
-2. **38 of 88 let anyone register a client with no approval.** Not a rule violation — but it might be the foothold a bigger attack needs.
-3. **26 of 88 accept a forged `Origin`** — a genuine MUST violation, but see #7's honest limit before you lead with it.
+   **Check #13 sharpens this — and it is the slide-worthy result.** Listing tools is not running them, and #13 tests the invocation path directly. **6 of those 28 servers require a login to *run* a tool** — `dock`, `switch`, `gondola`, `api-openmandate`, `catalog-api`, `financial-data` all list their catalog to a stranger but answer `401` to an unauthenticated `tools/call`. So only **22** are open to invocation as well as listing. That gap is empirical proof that #1's "anyone can use it" over-read ~21% of the servers it flagged.
+
+   **Own the exceptions, because they are checkable and they make the point sharper.** Cloudflare gated most of its servers but left `docs.mcp.cloudflare.com` open. HuggingFace's `hf.co/mcp` is open — and it is also the server carrying the metadata false positive noted under the table, so if you name it, name both facts. DeepWiki and EdgeOne are open **on purpose**. EdgeOne is the most interesting single case, because its one freely-available tool, `deploy-html`, **changes things** rather than only reading them.
+2. **38 of 83 let anyone register a client with no approval.** Not a rule violation — but it might be the foothold a bigger attack needs.
+3. **24 of 83 accept a forged `Origin`** — a genuine MUST violation, but see #7's honest limit before you lead with it.
+
+**And the two write checks, stated honestly.** `open-dcr` found 38 open registration endpoints. `improper-redirect-uri-validation` (#14) found **nothing** — of the 47 servers it could test, 23 correctly rejected an unregistered redirect address and 24 returned a login page first (inconclusive). Running the two write checks left **76 client registrations** behind that we could not delete — a real, concrete cost for one confirmed-clean result, and the sharpest illustration in the talk of what write-class probing actually costs.
 
 ### What limits these numbers — say this yourself, before you're asked
 
-- **58 of the 88 never told us which revision they follow** (22 said `2025-06-18`, 4 said `2025-03-26`, 4 said `2024-11-05` — that is all 88) — because a properly protected server says "log in first" before it gets around to agreeing a version. So the strict standard only ever applied to 22 servers; for the rest, the version-gated checks answer "don't know".
-- **88 servers is a thin sample.** These are rates within one small slice, **not** rates across the internet.
+- **55 of the 83 never told us which revision they follow** (21 said `2025-06-18`, 3 said `2025-03-26`, 4 said `2024-11-05` — that is all 28 that negotiated one) — because a properly protected server says "log in first" before it gets around to agreeing a version. So the strict standard only ever applied to 21 servers; for the rest, the version-gated checks answer "don't know".
+- **83 servers is a thin sample.** These are rates within one small slice, **not** rates across the internet.
 - **Breaking a MUST is not automatically an exploitable hole.**
 
 ### How we found the servers
 
-Shodan's free tier refuses the searches we would need (it answers `403` once you have zero query credits), so it found **0 servers** — recorded in the repository. The **official MCP Registry** is free, needs no key, is read page by page, and gives an address plus connection type for each remote entry, ready to feed straight into the scanner. We paginated 12 pages of it — roughly 1,200 server records — and stopped there; that is the committed provenance of our 88. A separate pull by hand reached **750 pages, about 75,000 entries**, without reaching the end, so the registry's true size is unknown and at least that. **That pull is not committed**, so present it as an observation, not as evidence in the repo. Free ways to find servers that *don't* advertise themselves: mining certificate transparency logs (a public record of every certificate issued) for `mcp.<company>` names, and searching GitHub for committed `mcp.json` files. **The honest limit: directories only find servers that chose to be listed.**
+Shodan's free tier refuses the searches we would need (it answers `403` once you have zero query credits), so it found **0 servers** — recorded in the repository. The **official MCP Registry** is free, needs no key, is read page by page, and gives an address plus connection type for each remote entry, ready to feed straight into the scanner. We paginated 12 pages of it — roughly 1,200 server records — and stopped there; that is the committed provenance of our 83. A separate pull by hand reached **750 pages, about 75,000 entries**, without reaching the end, so the registry's true size is unknown and at least that. **That pull is not committed**, so present it as an observation, not as evidence in the repo. Free ways to find servers that *don't* advertise themselves: mining certificate transparency logs (a public record of every certificate issued) for `mcp.<company>` names, and searching GitHub for committed `mcp.json` files. **The honest limit: directories only find servers that chose to be listed.**
 
 ---
 
@@ -284,14 +290,11 @@ Shodan's free tier refuses the searches we would need (it answers `403` once you
 
 Do not let this come up as a surprise question. Volunteer it when you present check #12.
 
-**Running the write check across 88 servers created 38 confirmed OAuth client registrations on servers we do not own, and we could not delete a single one.** With an earlier, smaller run, that is **42 in total** — see the second bullet below. Not one server returned the RFC 7592 fields needed to remove a registration — so the check's self-cleaning, the thing that made it feel safe to run, works only against our own practice server. They are inert (no password, no data access, nobody has logged in through them) but they are our litter on other people's systems. The full list of hosts and identifiers is committed to the repository.
+**The canonical 2026-09-27 run enabled both write checks and created 76 confirmed OAuth client registrations on servers we do not own — 38 from `open-dcr` and 38 from `improper-redirect-uri-validation` — and we could not delete a single one.** Not one server returned the RFC 7592 fields needed to remove a registration, so the checks' self-cleaning — the thing that made them feel safe to run — works only against our own practice server. They are inert (no password, no data access, nobody has logged in through them), and most servers expire an unused registration on their own, but until then they are our litter on other people's systems. Every identifier is journalled to `reports/raw-rescan-2026-09-27/write_journal.jsonl` **before** any delete is attempted, so even the ones we could not clean up are named.
 
-**Two precise points, in case an examiner opens the committed report:**
+**The precise point, in case an examiner opens the journal.** Earlier exploratory runs left more registrations on overlapping hosts — including the run where the scanner **wrote to `api.llow.io` while scanning `api.serff.ai`**, a different company that was never on our list. The server's own metadata named that address and the scanner obeyed it.
 
-- **Our own report says 39, not 38 — and that was our bug, not a judgement call.** The 39th row is a probe that timed out, and the row itself records **no registration address at all**: there was nowhere to send a request, so no client can exist. The runner flagged it for cleanup regardless. That is now fixed — a probe that dies before it has any address to write to no longer claims an obligation it could never discharge. The committed `dcr_scan.md` still shows the old count, so say the number is **38**, and that there is no 39th client to go looking for.
-- **An earlier, smaller run against 4 servers left 4 more un-deletable clients** (`dock`, `gondola`, `switch`, and `ca-rate-filings`), so the total across both runs is **42 confirmed**. That earlier run is also where the scanner **wrote to `api.llow.io` while scanning `api.serff.ai`** — a different company that was never on our list. The server's own metadata named that address and the scanner obeyed it.
-
-**That incident is why the containment rules in §5 exist**, and in the later run those rules correctly refused one write for exactly the same reason (`mcp.semgrep.ai` advertising registration on `login.semgrep.dev`) — the only refusal across all 88, and the one live demonstration that the guard is load-bearing.
+**That incident is why the containment rules in §5 exist**, and in the later run those rules correctly refused one write for exactly the same reason (`mcp.semgrep.ai` advertising registration on `login.semgrep.dev`) — the only refusal across all 83, and the one live demonstration that the guard is load-bearing.
 
 **The framing that works:** this is the confused-deputy problem from our own literature review, realised by our own tool, against ourselves. We found it, we contained it, and the containment is now demonstrably doing work. That is a stronger story than "we were careful from the start" — because it is true, and because it shows the failure mode is real rather than theoretical.
 
@@ -312,13 +315,13 @@ Being crisp about the boundary is worth more than claiming coverage.
 
 **Out of scope, with reasons:**
 
-- **Anything needing a real token or a completed login.** Nine further gaps were designed and never built: `no-pkce`, `missing-token-audience-validation`, `token-passthrough`, `confused-deputy-proxy-consent`, `improper-redirect-uri-validation`, `session-used-for-auth`, `self-asserted-capabilities`, `credential-harvesting-tool-desc`, `missing-session-isolation`.
+- **Anything needing a real token or a completed login.** Eight further gaps were designed and never built: `no-pkce`, `missing-token-audience-validation`, `token-passthrough`, `confused-deputy-proxy-consent`, `session-used-for-auth`, `self-asserted-capabilities`, `credential-harvesting-tool-desc`, `missing-session-isolation`. *(A ninth, `improper-redirect-uri-validation`, was later built as check #14 — see the appendix; its live run found it low-yield and expensive.)*
 - **Prompt injection, tool poisoning, malicious tool *content*.** That is the AI's *behaviour*; we test the server's *plumbing*. Different layer. It is the subject of the `MSB/` benchmark sitting in the parent folder — a different project entirely, no shared code.
 - **CORS is in scope only as general web security**, never as an MCP rule.
 
 **The consequence, stated honestly — this is the single most important sentence in the talk:**
 
-> This tool measures whether a server **advertises and enforces** login correctly. It does **not** measure whether that login is **sound**. A server can score `NO_GAP` on all twelve of our checks and still accept tokens meant for someone else, skip PKCE, or leak one user's data to another.
+> This tool measures whether a server **advertises and enforces** login correctly. It does **not** measure whether that login is **sound**. A server can score `NO_GAP` on all fourteen of our checks and still accept tokens meant for someone else, skip PKCE, or leak one user's data to another.
 
 **PKCE** is the cleanest example. It is a proof that the app finishing a login is the same app that started it, so a stolen half-finished login is useless. **We do not check it** — it needs a completed login. Naming it, unprompted, as something a clean report from us cannot rule out is the best possible demonstration that you understand your own instrument.
 
@@ -340,13 +343,13 @@ Worth one slide, because it shows the field is live and that we tracked it:
 | Question | Your answer, short |
 |---|---|
 | *Isn't this just a port scanner?* | No. Every check cites a specific clause of a specific standard and returns the evidence for its verdict. The unit of output is a compliance judgement, not an open port. |
-| *Did you attack anyone?* | Eleven of twelve checks create nothing durable, though check #7 does leave one MCP session parked on a session-based server. The twelfth creates a registration and is off by default. See §8 for what happened when we ran it, and what we changed. |
+| *Did you attack anyone?* | Twelve of the fourteen checks create nothing durable, though check #7 does leave one MCP session parked on a session-based server. The other two (#12, #14) each create a registration and are off by default. See §8 for what happened when we ran them, and what we changed. |
 | *Why not just read the servers' source code?* | They are other people's production servers. The whole point is measuring observable behaviour from outside, which is also the position a real attacker is in. |
-| *How do you know your scanner is right and the server is wrong?* | Seven purpose-built practice servers, one per posture, and a check only counts as working when it says `HAS_GAP` against the broken one **and** `NO_GAP` against the correct one. Plus 55 regression tests covering the ~33 bugs we actually shipped and fixed, each checked to fail against the old code. |
+| *How do you know your scanner is right and the server is wrong?* | Seven purpose-built practice servers, one per posture, and a check only counts as working when it says `HAS_GAP` against the broken one **and** `NO_GAP` against the correct one. Plus 64 regression/behaviour tests — 55 covering the ~33 bugs we actually shipped and fixed (each checked to fail against the old code), and 9 pinning the two new checks. |
 | *Why so many `INCONCLUSIVE`s?* | Because they are true. A refusal we cannot attribute, or a reply we cannot parse, is not evidence either way. Two of our checks got *better* by saying "unknown" more often. |
-| *88 servers isn't many.* | Agreed, and we say so. These are rates within one slice of the official registry, not internet-wide rates. Scaling up is a matter of running the same tool on a longer list. |
-| *What's the single biggest limitation?* | We never log in, so we measure advertisement and enforcement, not soundness. A server can pass all twelve checks and still mishandle tokens. |
-| *Which check is weakest, and why keep it?* | CORS (#8) — not an MCP rule at all, and only relevant if a browser is involved. We keep it, clearly labelled as general web security, because it costs one request. `predictable-session-id` (#6) is a close second: 0 findings in 88 servers, and the feature it tests was removed from the protocol. |
+| *83 servers isn't many.* | Agreed, and we say so. These are rates within one slice of the official registry, not internet-wide rates. Scaling up is a matter of running the same tool on a longer list. |
+| *What's the single biggest limitation?* | We never log in, so we measure advertisement and enforcement, not soundness. A server can pass all fourteen checks and still mishandle tokens. |
+| *Which check is weakest, and why keep it?* | CORS (#8) — not an MCP rule at all, and only relevant if a browser is involved. We keep it, clearly labelled as general web security, because it costs one request. `predictable-session-id` (#6) is a close second: 0 findings in 83 servers, and the feature it tests was removed from the protocol. |
 | *What would you do next?* | Pull candidate servers automatically from the official registry so a bulk run feeds itself; support the current `2026-07-28` revision, including the two new required headers. |
 
 ---
@@ -357,17 +360,17 @@ Worth one slide, because it shows the field is live and that we tracked it:
 2. **Authentication vs authorization, and what OAuth does.** (1 min, 1 slide)
 3. **The question: does the advertisement match the enforcement?** Mention the three candidate angles and why we chose this one. (1.5 min)
 4. **The flow diagram** from §4, and the three-steps-and-we-stop-at-one framing. (2 min)
-5. **Two or three mechanisms**, not twelve checks. Pick from: `INCONCLUSIVE` as a real answer, the control request in #7, the path-inserted lookup in #4, length-is-not-entropy in #6. (2.5 min)
+5. **Two or three mechanisms**, not fourteen checks. Pick from: `INCONCLUSIVE` as a real answer, the control request in #7, the path-inserted lookup in #4, length-is-not-entropy in #6, list-vs-call in #13. (2.5 min)
 6. **The results table and the three findings that matter.** (2 min)
 7. **Validation: seven practice servers, one per posture.** (1 min)
-8. **The write check, and what it cost us** — 42 registrations we could not delete, and the containment that came out of it. §8 says to volunteer this rather than wait for the question, so it needs a slot. (1 min)
+8. **The two write checks, and what they cost us** — 76 registrations we could not delete (38 from `open-dcr`, 38 from `improper-redirect-uri-validation`), and the containment that came out of it. §8 says to volunteer this rather than wait for the question, so it needs a slot. (1 min)
 9. **Scope and the honest limit** — advertises-and-enforces, not sound. Name PKCE. (1 min)
 
 ---
 
-## Appendix — the twelve checks, one at a time
+## Appendix — the fourteen checks, one at a time
 
-**This is reference material, not slide material.** It lives at the back on purpose: §11 tells you not to walk the audience through twelve checks, so read §1–§11 to build the talk and come here only to answer a question about a specific check.
+**This is reference material, not slide material.** It lives at the back on purpose: §11 tells you not to walk the audience through fourteen checks, so read §1–§11 to build the talk and come here only to answer a question about a specific check.
 
 Each entry follows the same shape: **what we send · what we look at · how we decide · why it matters · the honest limit.** Tier 1 means one request and we can tell; Tier 2 means a crafted request, a follow-up lookup, or several samples.
 
@@ -375,7 +378,7 @@ Each entry follows the same shape: **what we send · what we look at · how we d
 
 ### Tier 1 — one request, no login, and we can tell
 
-#### #1 `no-authentication-remote` — severity **critical**
+#### #1 `no-authentication-remote` — severity **medium**
 
 *Rule: MCP Transports §Security — servers SHOULD authenticate every connection, and a protected one MUST answer `401`.*
 
@@ -396,9 +399,9 @@ Each entry follows the same shape: **what we send · what we look at · how we d
 
 **What counts as a real refusal.** This is the sharpest judgement call in the project. A `401` is unambiguous. **A `403` is not** — it is also what a firewall, a country block, a bot filter, or an IP denylist returns. The tool used to credit any `403` as proof that the server enforces login, which turned *a blocked scan* into a clean bill of health on our most important check — the worst possible direction for a mistake. A `403` now counts only with corroboration: a `WWW-Authenticate` header, or a genuine OAuth error code in the body.
 
-If asked what that fix changed in practice, the precise answer is **one verdict**: a server whose bare `403` body said `missing api key` had been credited as enforcing login, and is now `INCONCLUSIVE`. (`NO_GAP` on this check fell 46 → 42 between two *earlier* scans — not the two runs behind §7's table — but the other three moves had unrelated causes: a `308` redirect we no longer follow, a legacy SSE endpoint answering `404`, and one server that simply opened up.)
+If asked what that fix changed in practice, the precise answer is **one verdict**: a server whose bare `403` body said `missing api key` had been credited as enforcing login, and is now `INCONCLUSIVE`. (`NO_GAP` on this check fell 46 → 42 between two *earlier* scans — not the run behind §7's table — but the other three moves had unrelated causes: a `308` redirect we no longer follow, a legacy SSE endpoint answering `404`, and one server that simply opened up.)
 
-**The part of that fix still too generous, and you should say it before you are asked.** *Any* `WWW-Authenticate` header counts, including `Negotiate`, `NTLM` or `Basic realm="corp"` — those are Windows sign-on middleware sitting in front of the server. A request stopped there never reached the MCP server at all, so it tells us nothing about its login. And we read that header *before* the body, which defeats the body rule that exists to reject exactly this. No published number is affected — none of the 88 answered `403` with such a header, we checked — but the hole is real, and it is on our most important check.
+**The part of that fix still too generous, and you should say it before you are asked.** *Any* `WWW-Authenticate` header counts, including `Negotiate`, `NTLM` or `Basic realm="corp"` — those are Windows sign-on middleware sitting in front of the server. A request stopped there never reached the MCP server at all, so it tells us nothing about its login. And we read that header *before* the body, which defeats the body rule that exists to reject exactly this. No published number is affected — none of the 83 answered `403` with such a header, we checked — but the hole is real, and it is on our most important check.
 
 **Why it matters.** This is the headline. A server here is not breaking a MUST — authenticating is only a SHOULD — but nothing stops a stranger asking what it can do.
 
@@ -466,7 +469,7 @@ If asked what that fix changed in practice, the precise answer is **one verdict*
 | Document present, field missing or empty | `HAS_GAP` — non-compliant on its own terms, whatever revision it claims |
 | No document anywhere | `HAS_GAP` (strict revision) / `INCONCLUSIVE` |
 
-**Where we look, and why this one is worth a slide.** Both RFC 9728 and RFC 8414 insert the well-known suffix **between the host and the path**. A resource at `https://ex.com/public/mcp` publishes its page at `https://ex.com/.well-known/oauth-protected-resource/public/mcp` — the server's own path appended. We originally probed only the bare domain. Since the standard MCP endpoint form is `https://host/mcp`, **that meant missing it on essentially every real server, and reporting fully compliant servers as missing their metadata.** We try the path-inserted form first, then the bare domain as a fallback, and we prefer the address the `401` itself named when there was one — because using that pointer is a client MUST, and guessing instead meant our scanner failed the very requirement it audits. (That pointer was the source for 33 of our 88 scans.)
+**Where we look, and why this one is worth a slide.** Both RFC 9728 and RFC 8414 insert the well-known suffix **between the host and the path**. A resource at `https://ex.com/public/mcp` publishes its page at `https://ex.com/.well-known/oauth-protected-resource/public/mcp` — the server's own path appended. We originally probed only the bare domain. Since the standard MCP endpoint form is `https://host/mcp`, **that meant missing it on essentially every real server, and reporting fully compliant servers as missing their metadata.** We try the path-inserted form first, then the bare domain as a fallback, and we prefer the address the `401` itself named when there was one — because using that pointer is a client MUST, and guessing instead meant our scanner failed the very requirement it audits. (That pointer was the source for 33 of our 83 scans.)
 
 **Why it matters.** This is the one check the *newest* revision made **stronger** — publishing the page is now required unconditionally.
 
@@ -495,7 +498,7 @@ If asked what that fix changed in practice, the precise answer is **one verdict*
 
 **Why it matters.** Web addresses get written into server logs, browser history, and analytics, and are passed to other sites in the `Referer` header. A tag in the address leaks.
 
-**The honest limit.** Be upfront about this one: **74 of our 88 servers answered "don't know".** We have not implemented the old two-connection SSE handshake that this check really needs. And the rules have moved on: protocol sessions were **removed entirely in revision `2026-07-28`** (see §9), so present this check as tied to revisions `2025-03-26` through `2025-11-25`, not as timeless.
+**The honest limit.** Be upfront about this one: **73 of our 83 servers answered "don't know".** We have not implemented the old two-connection SSE handshake that this check really needs. And the rules have moved on: protocol sessions were **removed entirely in revision `2026-07-28`** (see §9), so present this check as tied to revisions `2025-03-26` through `2025-11-25`, not as timeless.
 
 ---
 
@@ -524,7 +527,7 @@ We also guard the degenerate case: a tag longer than four characters built from 
 
 **Why it matters.** A guessable tag is not a break-in on its own — you would still need a token. It matters because some servers wrongly treat the tag *as* the credential, and because a guessable tag lets someone continue an existing conversation.
 
-**The honest limit.** Say this plainly: **0 failures in 88 servers, and protocol sessions were removed from MCP in `2026-07-28`.** This is our most marginal check. It is a good answer to "did every check find something?" — no, and that is a result too.
+**The honest limit.** Say this plainly: **0 failures in 83 servers, and protocol sessions were removed from MCP in `2026-07-28`.** This is our most marginal check. It is a good answer to "did every check find something?" — no, and that is a result too.
 
 ---
 
@@ -550,7 +553,7 @@ We also guard the degenerate case: a tag longer than four characters built from 
 
 **Why it matters.** It blocks **DNS rebinding**, where a web page re-points its own domain name at `127.0.0.1` to reach a server on your machine.
 
-**The honest limit.** Be ready for a sharp examiner here, and volunteer it first: that threat is aimed at *local* servers, so for a remote `https://` server the requirement is largely ceremonial. 26 of 88 breach it — a genuine MUST violation — **but all 26 are already among the 30 that need no login at all** (we checked the intersection: it is exact), so this check has never caught a server on its own.
+**The honest limit.** Be ready for a sharp examiner here, and volunteer it first: that threat is aimed at *local* servers, so for a remote `https://` server the requirement is largely ceremonial. 24 of 83 breach it — a genuine MUST violation — **but all 24 are already among the 28 that need no login at all** (we checked the intersection: it is exact), so this check has never caught a server on its own.
 
 ---
 
@@ -572,7 +575,7 @@ We also guard the degenerate case: a tag longer than four characters built from 
 | A fixed origin that isn't ours | `NO_GAP` |
 | No CORS header at all | `NO_GAP` — grants no cross-origin access |
 
-**Why it matters — and the honest limit, which here are the same thing.** Own this proactively: **this is the weakest thing we report, and the only one of the twelve not drawn from the MCP rules.** It only bites if a browser is involved, and MCP clients generally are not browsers. We report it as a general web-security observation and **never** cite it as a specification violation. Two servers out of 88.
+**Why it matters — and the honest limit, which here are the same thing.** Own this proactively: **this is the weakest thing we report, and the only one of the fourteen not drawn from the MCP rules.** It only bites if a browser is involved, and MCP clients generally are not browsers. We report it as a general web-security observation and **never** cite it as a specification violation. Two servers out of 83.
 
 One nuance worth keeping, because it shows care: on a wildcard we note that *if the server needs no login at all, any web page can still drive it directly* — the same exposure by a different route. Calling that simply "not exploitable" would have been misleading.
 
@@ -598,7 +601,7 @@ One nuance worth keeping, because it shows care: on a wildcard we note that *if 
 
 *Rule: MCP Authorization §2.3.2 + RFC 8414 — the login server MUST publish its own description.*
 
-**What we send.** Nothing of its own — the shared lookup already fetched this. That lookup tries the PRM's pointer first; if the PRM names no login server, or none of the ones it names answers, it falls back to probing the scanned server's **own origin**, because many MCP servers *are* their own login server. Without that fallback, checks #10–#12 would go silent on every server that publishes no PRM.
+**What we send.** Nothing of its own — the shared lookup already fetched this. That lookup tries the PRM's pointer first; if the PRM names no login server, or none of the ones it names answers, it falls back to probing the scanned server's **own origin**, because many MCP servers *are* their own login server. Without that fallback, checks #10–#12 and #14 would go silent on every server that publishes no PRM.
 
 **What we look at.** Whether the **AS metadata** page (Authorization Server Metadata — where the login server describes its own addresses and supported login styles) exists, and whether it correctly names *itself*.
 
@@ -671,12 +674,65 @@ Then, immediately, an attempt to **delete what we just created** — an RFC 7592
 | Anything else | `INCONCLUSIVE` — could be input validation rather than an auth decision |
 | No usable AS metadata, or metadata advertising no `registration_endpoint` | `NOT_APPLICABLE` — nothing to register against, and no request is sent |
 
-**That last row is the most common outcome in practice**: **40** of the 88 servers advertise no registration address at all, so we never write to them — which appears in §7's table as 39 `NOT_APPLICABLE` plus 1 `ERROR`. Turned round, this is the better number for a slide: **48 of 88 do advertise registration**, and those 48 are the only ones a live run would ever touch. (Careful with the number 39 — it appears twice in this document meaning two unrelated things. Here it is a verdict count; in §8 it is a miscount of how many clients we left behind.)
+**That last row is the most common outcome in practice**: **35** of the 83 servers advertise no registration address at all, so we never write to them — which appears in §7's table as 35 `NOT_APPLICABLE`. Turned round, this is the better number for a slide: **48 of 83 do advertise registration** (38 open + 10 inconclusive), and those 48 are the only ones a live run would ever touch.
 
 **The mechanism worth explaining: success is decided by the status code, not by whether we could parse the reply.** Any `2xx` — including a `202 Accepted` — means the server created something. Inferring "nothing was created" from an unreadable body is precisely how a real client ended up abandoned on a third party's server with no record of it.
 
 **And the harder version of the same mistake: a reply that never arrives is not a reply saying "no".** When our request reached the server and the answer got lost on the way back, the tool used to record it as "nothing was created" — and then printed **"Every client created was deleted again"** over a permanent registration on someone else's production server. It now separates the two cases by *why* the request failed: a connection that never opened created nothing and owes nothing, while a lost reply declares `MANUAL CLEANUP NEEDED`. Anything it cannot classify counts as possibly-created, because over-reporting one write you cannot verify is recoverable, and quietly abandoning one is not.
 
-**Why it matters.** Open self-registration is not against the rules — but it is **the foothold a bigger attack needs**, and it is the one surviving piece of the identity-confusion angle we otherwise dropped, because it is visible without any token. **38 of 88 servers.**
+**Why it matters.** Open self-registration is not against the rules — but it is **the foothold a bigger attack needs**, and it is the one surviving piece of the identity-confusion angle we otherwise dropped, because it is visible without any token. **38 of 83 servers.**
 
 **The honest limit, and you must state it.** Probing this means **really registering something**. See §8 — do not present this check without presenting what it cost.
+
+---
+
+#### #13 `unauthenticated-tool-invocation` — severity **high**
+
+*Rule: MCP Authorization — a protected server MUST validate a token before processing a request and answer `401`. `tools/call` is a privileged operation.*
+
+**What we send.** One `POST` of `tools/call` naming a **deliberately non-existent tool** (`__mcpauth_probe_nonexistent_tool__`) with empty arguments, **no `Authorization` header**, carrying the session tag if the server issued one. The fake name means a conformant server rejects it before running anything — nothing is executed.
+
+**What we look at.** Not any tool output — *where the rejection came from*: an HTTP `401` (or a corroborated `403`) versus a JSON-RPC reply.
+
+**How we decide.**
+
+| Observation | Verdict |
+|---|---|
+| `401`, or a `403` corroborated by `WWW-Authenticate` / an OAuth error code | `NO_GAP` — the invocation path is gated |
+| `2xx` with a JSON-RPC reply — a result, or an "unknown tool" error | `HAS_GAP` — the call reached the MCP dispatch layer, past any auth gate |
+| A JSON-RPC error that itself reads as an auth decision | `INCONCLUSIVE` — a non-conformant server may be doing app-layer auth |
+| bare `403` / `400` / `404` / `429` / other | `INCONCLUSIVE`, with a hint |
+
+**The mechanism worth explaining: this is the check that closes #1's inference gap.** #1 proves only that the *catalog* is readable without a login (it sends `tools/list`), then *infers* "anyone can use this server" — but a server can gate listing and calling differently (a public catalog with gated execution is legitimate), and #1 never tests a call. #13 tests the **invocation path directly**: a JSON-RPC reply to an unauthenticated `tools/call` proves the request got past the transport auth gate; a `401` proves it did not. Nothing runs, because the tool does not exist.
+
+**Why it matters — the fleet result that earns it a slide.** Against 83 servers, #13 **disagreed with #1 on 6 of them** — `dock` (71 tools), `switch` (69), `gondola` (44), `financial-data`, `api-openmandate`, `catalog-api` — all answered `tools/list` to a stranger (#1 `HAS_GAP`) yet returned `401` to an unauthenticated `tools/call` (#13 `NO_GAP`). Empirical proof that listing ≠ invoking: ~21% of the servers #1 flagged actually **do** gate execution. Everywhere else #13 and #1 agreed exactly.
+
+**The honest limit.** A JSON-RPC reply proves the call reached the dispatch layer; it does not prove a *real* tool would run side effects (we never call one). A server that reports auth failure as a JSON-RPC error rather than `401` lands in `INCONCLUSIVE`, not mis-graded open.
+
+---
+
+#### #14 `improper-redirect-uri-validation` — severity **high** · **this one writes** · off by default
+
+*Rule: OAuth 2.1 §7.5.4 + MCP — clients MUST pre-register redirect URIs; the authorization server MUST validate exact redirect URIs against pre-registered values, and MUST NOT redirect to an invalid one.*
+
+**What a redirect URI is.** After a user logs in, the authorization server sends their browser back to a **redirect address** the client registered in advance, carrying the one-time authorization code. If the server will send that code to an address the client never registered, an attacker who lures a user to a crafted authorize link captures the code — and thus the token.
+
+**What we send.** First a real RFC 7591 registration (a **write**) to obtain a client with one known redirect URI; then **one unauthenticated `GET`** to the `authorization_endpoint` carrying a **different, unregistered** redirect URI (`https://mcpauth-attacker.example/steal`); then an RFC 7592 `DELETE` to clean the client up. Both URIs are non-resolving `.example` hosts, so even a server that wrongly honoured one sends nothing anywhere real.
+
+**Why it writes, and why it's off by default.** To test "an *unregistered* redirect URI for a *known* client" we must first **have** a known client — which means registering one, exactly like #12. So #14 runs only under `--unsafe-writes`, and only where self-service registration is open.
+
+**What we look at — and the point that trips people up: HTTP `200` does NOT mean "accepted".** The `/authorize` endpoint is a **browser page**, not a JSON API. A `200` is the server serving its own **login/consent HTML** at its own origin — the authorization code is **never** delivered in a `200` body. The dangerous event — sending the code to the attacker's address — happens only as a **`3xx` redirect whose `Location` is the unregistered URI**.
+
+**How we decide.**
+
+| Observation | Verdict |
+|---|---|
+| `3xx` → `Location` host = the unregistered attacker URI | `HAS_GAP` — server honoured an address the client never registered |
+| `4xx` (rejected, no redirect to the bad URI) | `NO_GAP` — consistent with validating against the registered value |
+| `3xx` → the server's **own** login host, or `200` (login/consent page) | `INCONCLUSIVE` — the code went nowhere; validation may happen only after a login we cannot complete |
+
+Front-desk analogy: `200` = the desk hands you a **sign-in form** (nobody sent to the attacker yet); `3xx` to the bad URI = the desk **sends your guest and pass to the attacker address, no check** (broken); `4xx` = *"that address isn't on your registered list — denied"* (correct). Marking a `200` as `HAS_GAP` would be a false accusation.
+
+**Why it matters — and the fleet result you must present honestly.** Against the 47 applicable servers, #14 found **0 `HAS_GAP`, 23 `NO_GAP`, 24 `INCONCLUSIVE`** — **no vulnerabilities**, and half inconclusive because real authorization servers show a **login page** before validating the redirect URI (the same "needs a completed login" wall the dropped gaps hit). The cost: it registered **38 clients it could not delete** (no server supported RFC 7592 cleanup), leaving 38 registrations on third parties (and `open-dcr` left another 38 the same day). So present #14 as what it is: built and verified (the sandbox demo catches a vulnerable server), but in the wild **low-yield and expensive** — a concrete lesson in the cost of write-class active probing versus its yield.
+
+**The honest limit.** Like #12, probing this means **really registering something** — here, for zero findings. And it cannot see a server that validates the redirect URI only *after* a login we never complete.

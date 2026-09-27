@@ -13,11 +13,13 @@ from .tier1 import (
     NoAuthenticationRemote,
     NoTlsTransport,
     SessionIdInUrl,
+    UnauthenticatedToolInvocation,
 )
 from .tier2 import (
     AuthEndpointsNotHttps,
     CorsMisconfiguration,
     ImplicitFlowEnabled,
+    ImproperRedirectUriValidation,
     MissingAsMetadata,
     OpenDcr,
     OriginNotValidated,
@@ -39,6 +41,11 @@ ALL_DETECTORS: list[type[Detector]] = [
     MissingAsMetadata,
     ImplicitFlowEnabled,
     OpenDcr,
+    # #13 — added after the original 1–12 so the historical numbering stays stable. It is a
+    # tier-1 mechanism (one unauthenticated request), the invocation-path twin of #1.
+    UnauthenticatedToolInvocation,
+    # #14 — a tier-2 WRITE (registers a throwaway client, like #12), off unless --unsafe-writes.
+    ImproperRedirectUriValidation,
 ]
 
 

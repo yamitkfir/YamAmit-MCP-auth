@@ -274,7 +274,7 @@ def test_list_detectors_needs_no_url():
     from mcpauth.detectors import ALL_DETECTORS
 
     assert main(["scan", "--list-detectors"]) == EXIT_CLEAN
-    assert len(ALL_DETECTORS) == 12
+    assert len(ALL_DETECTORS) == 14
 
 
 # --- detector crash handling -----------------------------------------------------
@@ -1036,3 +1036,201 @@ def test_large_body_is_read_in_full():
     raw, truncated = asyncio.run(_read_body(FakeResp(chunks), 100,
                                             stop_when_stalled=False))
     assert len(raw) == 100 and truncated is True
+
+
+def test_unauthenticated_tool_invocation_reads_where_rejection_came_from():
+    """#13 reads WHERE a fake tools/call was rejected, not any tool output.
+
+    - a JSON-RPC reply (a result, or an "unknown tool" error) at 2xx means the request
+      reached the MCP dispatch layer, past any transport auth gate -> HAS_GAP (the
+      invocation path #1 can only infer);
+    - HTTP 401 -> gated -> NO_GAP;
+    - a JSON-RPC error that reads as an auth decision -> INCONCLUSIVE (a non-conformant
+      server may be doing app-layer auth; the spec requires HTTP 401);
+    - a bare 403 -> INCONCLUSIVE (a WAF / geo-block / bot filter looks identical).
+    """
+    from mcpauth.detectors.tier1 import UnauthenticatedToolInvocation
+    from mcpauth.models import ProbeContext, TargetSpec
+    from mcpauth.probe import HttpResult
+
+    def _run(status, body, headers=None):
+        class P:
+            async def mcp_call(self, url, method, params=None, **kw):
+                assert method == "tools/call"
+                assert params and params.get("name")  # a (fake) tool name is always sent
+                return HttpResult(
+                    ok=True, status=status, headers=headers or {},
+                    text=json.dumps(body), json=body,
+                    url=url, method="POST", rpc_method=method, request_headers={},
+                )
+        ctx = ProbeContext(target=TargetSpec(url="https://x.example/mcp"), probe=P())
+        return asyncio.run(UnauthenticatedToolInvocation().detect(ctx))
+
+    unknown_tool = _run(200, {"jsonrpc": "2.0", "id": "x", "error": {
+        "code": -32601, "message": "Unknown tool: __mcpauth_probe_nonexistent_tool__"}})
+    assert unknown_tool.verdict is Verdict.HAS_GAP, unknown_tool.notes
+
+    got_result = _run(200, {"jsonrpc": "2.0", "id": "x", "result": {"content": []}})
+    assert got_result.verdict is Verdict.HAS_GAP, got_result.notes
+
+    gated = _run(401, {"jsonrpc": "2.0", "id": "x",
+                       "error": {"code": 401, "message": "unauthorized"}})
+    assert gated.verdict is Verdict.NO_GAP, gated.notes
+
+    auth_via_jsonrpc = _run(200, {"jsonrpc": "2.0", "id": "x", "error": {
+        "code": -32001, "message": "Unauthorized: bearer token required"}})
+    assert auth_via_jsonrpc.verdict is Verdict.INCONCLUSIVE, auth_via_jsonrpc.notes
+
+    bare_403 = _run(403, {"error": {"message": "forbidden by edge"}})
+    assert bare_403.verdict is Verdict.INCONCLUSIVE, bare_403.notes
+
+
+def _ctx14(authorize_result, *, reg_status=201, reg_json="default",
+           reg_endpoint="https://x.example/register",
+           authz="https://x.example/authorize", journal=None):
+    """Build a ProbeContext + mock probe for the #14 redirect-uri detector.
+
+    The mock `request` dispatches by method: POST = registration, GET = the authorize probe
+    (the variable part), DELETE = RFC 7592 cleanup (always 204 here).
+    """
+    from mcpauth.models import ProbeContext, TargetSpec
+    from mcpauth.oauth import OAuthDiscovery
+    from mcpauth.probe import HttpResult
+
+    md = {"authorization_endpoint": authz}
+    if reg_endpoint is not None:
+        md["registration_endpoint"] = reg_endpoint
+    disc = OAuthDiscovery(attempted=True)
+    disc.as_metadata = md
+
+    if reg_json == "default":
+        reg_json = {
+            "client_id": "probe-client",
+            "registration_client_uri": "https://x.example/register/probe-client",
+            "registration_access_token": "rtok",
+        }
+    created = reg_status is not None and 200 <= reg_status < 300
+
+    class P:
+        async def request(self, method, url, **kw):
+            if method == "POST":
+                return HttpResult(
+                    ok=True, status=reg_status,
+                    json=reg_json if created else None,
+                    text=json.dumps(reg_json) if reg_json else "",
+                    headers={}, url=url, method="POST", rpc_method="",
+                )
+            if method == "GET":
+                return authorize_result
+            if method == "DELETE":
+                return HttpResult(ok=True, status=204, url=url, method="DELETE", rpc_method="")
+            return HttpResult(ok=False, status=None, error="unexpected", url=url, method=method)
+
+    ctx = ProbeContext(target=TargetSpec(url="https://x.example/mcp"), probe=P())
+    ctx.oauth = disc
+    if journal is not None:
+        ctx.write_journal = journal.append
+    return ctx
+
+
+def _authz(status, *, location=None, text=""):
+    from mcpauth.probe import HttpResult
+    return HttpResult(
+        ok=True, status=status, headers={"location": location} if location else {},
+        text=text, url="https://x.example/authorize", method="GET", rpc_method="",
+    )
+
+
+def test_improper_redirect_uri_redirect_to_unregistered_is_a_gap():
+    """A 3xx whose Location is the UNREGISTERED redirect_uri we sent == the AS honoured it."""
+    from mcpauth.detectors.tier2 import ImproperRedirectUriValidation, _CLEANUP_FAIL_MARKER
+
+    journal = []
+    ctx = _ctx14(
+        _authz(302, location="https://mcpauth-attacker.example/steal?code=abc"),
+        journal=journal,
+    )
+    f = asyncio.run(ImproperRedirectUriValidation().detect(ctx))
+    assert f.verdict is Verdict.HAS_GAP, f.notes
+    # The client we created must have been cleaned up (voauth-style RFC 7592), not orphaned.
+    assert _CLEANUP_FAIL_MARKER not in f.notes, f.notes
+    assert "deleted via RFC 7592" in f.notes, f.notes
+    # And it must have been journalled created-then-deleted, in that order.
+    stages = [e["stage"] for e in journal]
+    assert stages == ["created", "deleted"], stages
+
+
+def test_improper_redirect_uri_rejection_is_no_gap():
+    """A 4xx that does not redirect to the bogus uri == the AS rejected it -> NO_GAP."""
+    from mcpauth.detectors.tier2 import ImproperRedirectUriValidation
+
+    f = asyncio.run(ImproperRedirectUriValidation().detect(
+        _ctx14(_authz(400, text="invalid redirect_uri"))))
+    assert f.verdict is Verdict.NO_GAP, f.notes
+
+
+def test_improper_redirect_uri_login_redirect_is_inconclusive():
+    """Redirect to the AS's OWN host (a login page) means validation is deferred past login."""
+    from mcpauth.detectors.tier2 import ImproperRedirectUriValidation
+
+    f = asyncio.run(ImproperRedirectUriValidation().detect(
+        _ctx14(_authz(302, location="https://x.example/login?return=..."))))
+    assert f.verdict is Verdict.INCONCLUSIVE, f.notes
+
+
+def test_improper_redirect_uri_consent_page_is_inconclusive():
+    """A 200 (login/consent page) cannot be judged without completing a login."""
+    from mcpauth.detectors.tier2 import ImproperRedirectUriValidation
+
+    f = asyncio.run(ImproperRedirectUriValidation().detect(
+        _ctx14(_authz(200, text="<html>please sign in</html>"))))
+    assert f.verdict is Verdict.INCONCLUSIVE, f.notes
+
+
+def test_improper_redirect_uri_closed_dcr_is_not_applicable():
+    """If registration requires auth, no client can be obtained -> NOT_APPLICABLE (not a gap)."""
+    from mcpauth.detectors.tier2 import ImproperRedirectUriValidation
+
+    journal = []
+    f = asyncio.run(ImproperRedirectUriValidation().detect(
+        _ctx14(_authz(200), reg_status=401, journal=journal)))
+    assert f.verdict is Verdict.NOT_APPLICABLE, f.notes
+    assert journal == [], "no client was created, so nothing should be journalled"
+
+
+def test_improper_redirect_uri_no_registration_endpoint_is_not_applicable():
+    """Without DCR there is no way to get a test client, so the check cannot run."""
+    from mcpauth.detectors.tier2 import ImproperRedirectUriValidation
+
+    f = asyncio.run(ImproperRedirectUriValidation().detect(
+        _ctx14(_authz(200), reg_endpoint=None)))
+    assert f.verdict is Verdict.NOT_APPLICABLE, f.notes
+
+
+def test_improper_redirect_uri_offsite_registration_is_refused_without_writing():
+    """The registration write is contained: an endpoint on a third-party host is refused,
+    and NO request is made."""
+    from mcpauth.detectors.tier2 import ImproperRedirectUriValidation
+
+    journal = []
+    f = asyncio.run(ImproperRedirectUriValidation().detect(
+        _ctx14(_authz(200), reg_endpoint="https://evil-third-party.example/register",
+               journal=journal)))
+    assert f.verdict is Verdict.INCONCLUSIVE, f.notes
+    assert "REFUSED" in f.notes
+    assert journal == [], "a refused write must not be journalled — nothing was created"
+
+
+def test_improper_redirect_uri_uncleanable_client_is_flagged_loudly():
+    """A gap where the created client cannot be deleted must carry MANUAL CLEANUP NEEDED."""
+    from mcpauth.detectors.tier2 import ImproperRedirectUriValidation, _CLEANUP_FAIL_MARKER
+
+    # Registration succeeds but returns no RFC 7592 management fields -> cannot delete.
+    ctx = _ctx14(
+        _authz(302, location="https://mcpauth-attacker.example/steal"),
+        reg_json={"client_id": "orphan-client"},
+    )
+    f = asyncio.run(ImproperRedirectUriValidation().detect(ctx))
+    assert f.verdict is Verdict.HAS_GAP, f.notes
+    assert _CLEANUP_FAIL_MARKER in f.notes, f.notes
+    assert "orphan-client" in f.notes, f.notes
