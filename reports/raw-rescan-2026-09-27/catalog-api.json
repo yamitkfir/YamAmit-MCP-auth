@@ -1,0 +1,185 @@
+{
+  "report_version": 2,
+  "target": "https://mcp.buywhere.ai/mcp",
+  "reachable": true,
+  "protocol_version": "2024-11-05",
+  "server_info": {
+    "name": "buywhere-catalog",
+    "version": "1.0.0"
+  },
+  "detectors_run": [
+    "no-authentication-remote",
+    "no-tls-transport",
+    "missing-www-authenticate",
+    "missing-protected-resource-metadata",
+    "session-id-in-url",
+    "predictable-session-id",
+    "origin-not-validated",
+    "cors-misconfiguration",
+    "auth-endpoints-not-https",
+    "missing-as-metadata",
+    "implicit-flow-enabled",
+    "open-dcr",
+    "unauthenticated-tool-invocation",
+    "improper-redirect-uri-validation"
+  ],
+  "tiers_selected": "all",
+  "excluded": [],
+  "discovery": [
+    "initialize -> HTTP 200, protocolVersion=2024-11-05, session=no",
+    "PRM GET https://mcp.buywhere.ai/.well-known/oauth-protected-resource/mcp -> HTTP 404",
+    "PRM GET https://mcp.buywhere.ai/.well-known/oauth-protected-resource -> HTTP 200",
+    "PRM `resource` is 'https://api.buywhere.ai/mcp' but we scanned 'https://mcp.buywhere.ai/mcp' \u2014 a DIFFERENT host, so this document may describe another resource entirely.",
+    "PRM found at https://mcp.buywhere.ai/.well-known/oauth-protected-resource (source=origin): 1 authorization_servers.",
+    "AS metadata GET https://api.buywhere.ai/.well-known/oauth-authorization-server -> HTTP 200",
+    "AS metadata resolved at https://api.buywhere.ai/.well-known/oauth-authorization-server (source=prm-listed)."
+  ],
+  "summary": {
+    "HAS_GAP": 2,
+    "NO_GAP": 7,
+    "NOT_APPLICABLE": 3,
+    "INCONCLUSIVE": 2
+  },
+  "findings": [
+    {
+      "gap_id": "no-authentication-remote",
+      "name": "No authentication on remote MCP server",
+      "verdict": "HAS_GAP",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://mcp.buywhere.ai/mcp (JSON-RPC tools/list) with NO Authorization header\nRESPONSE: HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"56ec4ce8-ff16-4211-8843-5d315e7c2677\",\"result\":{\"tools\":[{\"name\":\"search_products\",\"description\":\"Search the BuyWhere product catalog by keyword. Treat deliver_to as REQUIRED for buyer-facing use (ISO-3166 country of the end user); it takes precedence over country_code/country and prevents all-market scans. Returns product records with title, description, image, price, and m \u2026[truncated]",
+      "spec_reference": "Transports \u00a7Security: servers SHOULD authenticate all connections. A protected server MUST answer 401 when authorization is required.",
+      "notes": "tools/list returned 13 tool(s) to a caller with no credential \u2014 the tool catalog is exposed without login (capability disclosure). Whether these tools can be invoked without a credential was not tested (we never send tools/call)."
+    },
+    {
+      "gap_id": "no-tls-transport",
+      "name": "Cleartext HTTP transport (no TLS)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: GET https://mcp.buywhere.ai/mcp with NO Authorization header\nRESPONSE: HTTP 200\n{\"name\":\"buywhere-catalog\",\"description\":\"BuyWhere MCP server. JSON-RPC 2.0 over HTTP POST.\",\"protocol\":\"mcp\",\"protocolVersion\":\"2024-11-05\",\"transport\":\"http\",\"methods\":[\"initialize\",\"tools/list\",\"tools/call\"],\"tools\":[\"search_products\",\"get_product\",\"compare_products\",\"get_deals\",\"list_categories\",\"find_best_price\",\"find_similar\",\"ingest_products\",\"search_products_v2\",\"get_product_v2\",\"compare_p \u2026[truncated]",
+      "spec_reference": "OAuth 2.1 \u00a71.5 / MCP Authorization: auth-bearing traffic MUST use HTTPS (loopback exempt).",
+      "notes": "Endpoint is https and its certificate validated."
+    },
+    {
+      "gap_id": "missing-www-authenticate",
+      "name": "401 without RFC 9728 WWW-Authenticate pointer",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://mcp.buywhere.ai/mcp (JSON-RPC tools/list) with NO Authorization header\nRESPONSE: HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"e5784a22-99dd-4749-b9ee-7c4ef084a58b\",\"result\":{\"tools\":[{\"name\":\"search_products\",\"description\":\"Search the BuyWhere product catalog by keyword. Treat deliver_to as REQUIRED for buyer-facing use (ISO-3166 country of the end user); it takes precedence over country_code/country and prevents all-market scans. Returns product records with title, description, image, price, and m \u2026[truncated]",
+      "spec_reference": "MCP Authorization 2025-06-18: on 401 the server MUST return WWW-Authenticate indicating the protected-resource-metadata URL (RFC 9728 \u00a75.1).",
+      "notes": "No authentication challenge to inspect (HTTP 200 is not an authentication challenge), so the WWW-Authenticate MUST is not triggered (see no-authentication-remote for the real risk)."
+    },
+    {
+      "gap_id": "missing-protected-resource-metadata",
+      "name": "Missing OAuth Protected Resource Metadata (RFC 9728)",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "PRM at https://mcp.buywhere.ai/.well-known/oauth-protected-resource",
+      "spec_reference": "MCP Authorization: servers MUST expose RFC 9728 metadata at /.well-known/oauth-protected-resource including authorization_servers. RFC 9728 \u00a73.1 locates it by inserting the well-known suffix before the resource path.",
+      "notes": "authorization_servers present (1 entry). NOTE: the document's `resource` field names a different host than the target, so it may describe another resource (RFC 9728 \u00a73.3)."
+    },
+    {
+      "gap_id": "session-id-in-url",
+      "name": "Session identifier carried in URL/query string",
+      "verdict": "INCONCLUSIVE",
+      "severity": "medium",
+      "evidence": "REQUEST: POST https://mcp.buywhere.ai/mcp (JSON-RPC initialize) with NO Authorization header\nRESPONSE: HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"a72e2e46-850e-44da-831b-00ba85867c49\",\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"buywhere-catalog\",\"version\":\"1.0.0\"}}}\n--- SSE probe ---\nREQUEST: GET https://mcp.buywhere.ai/mcp with NO Authorization header\nRESPONSE: HTTP 200\n{\"name\":\"buywhere-catalog\",\"description\":\"BuyWhere MCP server. JSON-RPC 2.0 over HTTP POST.\",\"protocol\":\"mcp\",\"protocolVersion\":\"2024-11-05\",\"transport\":\"http\",\"methods\":[\"initialize\",\"tools/list\",\"to \u2026[truncated]",
+      "spec_reference": "OAuth 2.1 \u00a75: tokens MUST NOT appear in URI query. MCP Streamable HTTP moved the session to the Mcp-Session-Id header.",
+      "notes": "No header session id and no URL-borne session id observed. The server may be stateless (no session at all), in which case this gap cannot apply."
+    },
+    {
+      "gap_id": "predictable-session-id",
+      "name": "Predictable session identifier",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "medium",
+      "evidence": "",
+      "spec_reference": "MCP Transports \u00a7Session Management: session id SHOULD be globally unique and cryptographically secure. Security Best Practices \u00a7Session Hijacking: servers MUST use secure, non-deterministic session IDs; avoid predictable/sequential ones.",
+      "notes": "Server answered initialize but issued no Mcp-Session-Id header, so there is no stateful session identifier to assess. (Protocol-level sessions were removed in MCP 2026-07-28, so this is expected on current servers.)"
+    },
+    {
+      "gap_id": "origin-not-validated",
+      "name": "Origin header not validated (DNS rebinding)",
+      "verdict": "HAS_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: POST https://mcp.buywhere.ai/mcp (JSON-RPC initialize) with NO Authorization header Origin: https://evil.attacker.example\nRESPONSE: HTTP 200\n{\"jsonrpc\":\"2.0\",\"id\":\"186915a6-afda-4fab-af04-e0660315265d\",\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"buywhere-catalog\",\"version\":\"1.0.0\"}}}",
+      "spec_reference": "MCP Transports \u00a7Security Warning: servers MUST validate the Origin header on all incoming connections to prevent DNS rebinding attacks.",
+      "notes": "initialize from forged Origin 'https://evil.attacker.example' succeeded (HTTP 200 with a valid result) \u2014 the server accepts cross-origin requests it should reject."
+    },
+    {
+      "gap_id": "cors-misconfiguration",
+      "name": "CORS reflects arbitrary origin with credentials",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "no Access-Control-Allow-Origin in response to Origin https://evil.attacker.example",
+      "spec_reference": "Not in the MCP spec. General web security: reflecting an arbitrary Origin in Access-Control-Allow-Origin together with Access-Control-Allow-Credentials: true lets any website make credentialed cross-origin calls.",
+      "notes": "Server grants no cross-origin access (safe; MCP clients aren't browsers)."
+    },
+    {
+      "gap_id": "auth-endpoints-not-https",
+      "name": "OAuth endpoint not served over HTTPS",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "https://api.buywhere.ai; issuer=https://api.buywhere.ai; token_endpoint=https://api.buywhere.ai/v1/oauth/token; registration_endpoint=https://api.buywhere.ai/v1/oauth/register",
+      "spec_reference": "OAuth 2.1 \u00a71.5 & MCP Authorization \u00a72.8: all OAuth protocol URLs MUST use https (loopback exempt). RFC 8414 mandates https for issuer / jwks_uri / metadata path.",
+      "notes": "All 4 discovered OAuth URL(s) use https or loopback."
+    },
+    {
+      "gap_id": "missing-as-metadata",
+      "name": "Missing OAuth Authorization Server Metadata (RFC 8414)",
+      "verdict": "NO_GAP",
+      "severity": "medium",
+      "evidence": "AS metadata at https://api.buywhere.ai/.well-known/oauth-authorization-server (source=prm-listed)",
+      "spec_reference": "MCP Authorization \u00a72.3.2: clients MUST follow RFC 8414 to obtain AS metadata; authorization servers MUST provide it. Distinct from RFC 9728 PRM (#4).",
+      "notes": "RFC 8414 Authorization Server Metadata resolved successfully."
+    },
+    {
+      "gap_id": "implicit-flow-enabled",
+      "name": "Implicit grant advertised (forbidden by OAuth 2.1)",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "response_types_supported=[]",
+      "spec_reference": "OAuth 2.1 \u00a71.8 removes the implicit grant; MCP \u00a72.3 mandates OAuth 2.1. RFC 8414: response_types_supported 'token' or grant_types_supported 'implicit' advertise it.",
+      "notes": "response_types_supported has no 'token' and no 'implicit' grant advertised \u2014 implicit grant not usable."
+    },
+    {
+      "gap_id": "open-dcr",
+      "name": "Open Dynamic Client Registration",
+      "verdict": "INCONCLUSIVE",
+      "severity": "high",
+      "evidence": "REQUEST: POST https://api.buywhere.ai/v1/oauth/register with NO Authorization header\nRESPONSE: HTTP 500\n{\"error\":\"server_error\"}",
+      "spec_reference": "RFC 7591 \u00a73: open registration is permitted (SHOULD), but an unauthenticated registration endpoint is the prerequisite for the confused-deputy attack and for registration flooding. Cleanup uses RFC 7592 \u00a72.3 (DELETE -> 204).",
+      "notes": "Registration POST returned HTTP 500 without a client_id; could be input validation rather than an auth decision."
+    },
+    {
+      "gap_id": "unauthenticated-tool-invocation",
+      "name": "Tool invocation without authentication",
+      "verdict": "NO_GAP",
+      "severity": "high",
+      "evidence": "REQUEST: POST https://mcp.buywhere.ai/mcp (JSON-RPC tools/call) with NO Authorization header\nRESPONSE: HTTP 401\n{\"error\":\"missing_api_key\",\"message\":\"No API key. Agents: self-register in one call \u2014 no email, no human, key returned instantly.\",\"register\":{\"method\":\"POST\",\"url\":\"https://api.buywhere.ai/v1/auth/register?verify=false\",\"content_type\":\"application/json\",\"body\":{\"agent_name\":\"<your-agent-name>\"},\"returns\":\"api_key (use as Authorization: Bearer <api_key>); 1000 requests/day free\",\"oauth_alternative \u2026[truncated]",
+      "spec_reference": "MCP Authorization: a protected MCP server MUST validate a bearer token before processing a request and MUST answer 401 when authorization is required. tools/call is a privileged operation, so reaching its dispatch with no credential means the invocation path is unauthenticated.",
+      "notes": "Server rejected an unauthenticated tools/call (HTTP 401 \u2014 an unambiguous authentication challenge); the invocation path requires authentication."
+    },
+    {
+      "gap_id": "improper-redirect-uri-validation",
+      "name": "Authorization server accepts an unregistered redirect_uri",
+      "verdict": "NOT_APPLICABLE",
+      "severity": "high",
+      "evidence": "",
+      "spec_reference": "MCP Authorization / OAuth 2.1 \u00a77.5.4: clients MUST pre-register redirect URIs and the authorization server MUST validate exact redirect URIs against pre-registered values, and MUST NOT redirect to an invalid redirection URI.",
+      "notes": "AS metadata advertises no authorization_endpoint to test."
+    }
+  ],
+  "oauth": {
+    "prm_url": "https://mcp.buywhere.ai/.well-known/oauth-protected-resource",
+    "prm_source": "origin",
+    "authorization_servers": [
+      "https://api.buywhere.ai"
+    ],
+    "as_metadata_url": "https://api.buywhere.ai/.well-known/oauth-authorization-server",
+    "as_metadata_usable": true,
+    "unresolved_servers": [],
+    "blocked_urls": [],
+    "external_hosts_contacted": [
+      "api.buywhere.ai"
+    ]
+  }
+}

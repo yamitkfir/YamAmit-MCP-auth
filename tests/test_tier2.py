@@ -131,8 +131,9 @@ def test_write_detectors_excluded_by_default(urls):
     drop the only write detector."""
     from mcpauth.detectors import WRITE_DETECTORS
 
-    assert WRITE_DETECTORS == {"open-dcr"}
+    assert WRITE_DETECTORS == {"open-dcr", "improper-redirect-uri-validation"}
     report = asyncio.run(scan(urls["voauth"], tiers={2}, exclude=WRITE_DETECTORS))
     gap_ids = {f["gap_id"] for f in report["findings"]}
     assert "open-dcr" not in gap_ids
+    assert "improper-redirect-uri-validation" not in gap_ids
     assert "origin-not-validated" in gap_ids  # other tier-2 detectors still run

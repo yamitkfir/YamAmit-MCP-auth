@@ -36,6 +36,7 @@ NA = Verdict.NOT_APPLICABLE.value
 # gap_id -> {posture: expected_verdict}.  Missing posture = not asserted.
 EXPECTATIONS = {
     "no-authentication-remote": {"vuln": H, "hard": N, "broken": N},
+    "unauthenticated-tool-invocation": {"vuln": H, "hard": N, "broken": N},
     "missing-www-authenticate": {"vuln": NA, "hard": N, "broken": H},
     "missing-protected-resource-metadata": {"vuln": H, "hard": N, "broken": H},
     "session-id-in-url": {"vuln": H, "hard": N},

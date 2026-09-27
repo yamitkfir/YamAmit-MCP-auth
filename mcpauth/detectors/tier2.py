@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import math
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from ..models import ProbeContext, Severity, Verdict
 from ..netguard import is_loopback_host as _is_loopback_host
 from ..netguard import same_site as _same_site
+from ..oauth import is_ssrf_risk
 from ..probe import Probe, jsonrpc_result, truncated_success
 from .base import Detector, is_auth_challenge
 
@@ -765,6 +766,109 @@ def _write_target_refusal(url: str, target_url: str) -> str:
     return ""
 
 
+# --- shared write machinery, used by #12 (open-dcr) and #14 (redirect-uri validation) ---
+# Both gaps must register a throwaway RFC 7591 client, journal it before anything that could
+# fail, and delete it again via RFC 7592. Keeping that in one place means the two detectors
+# cannot drift on the parts that matter most: the durability of the record and the
+# containment of the credential-bearing DELETE.
+
+def _registration_payload(redirect_uris: list[str]) -> dict:
+    return {
+        "client_name": "mcpauth-probe (auth-gap scanner, safe to delete)",
+        "redirect_uris": list(redirect_uris),
+        "grant_types": ["authorization_code"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+    }
+
+
+async def _register_probe_client(probe: "Probe", endpoint: str, redirect_uris: list[str]):
+    """POST one RFC 7591 registration with NO initial access token. Returns the HttpResult."""
+    return await probe.request(
+        "POST", endpoint,
+        headers={"Content-Type": "application/json"},
+        json_body=_registration_payload(redirect_uris),
+    )
+
+
+def _record_write(
+    ctx: ProbeContext, gap_id: str, endpoint: str, *,
+    client_id: str | None, stage: str, detail: str = "",
+) -> None:
+    """Hand one durable record of a write to `ctx.write_journal`, if a sink was given.
+
+    Nothing here chooses a path or touches the filesystem — the caller supplies the sink
+    (`reports/run_dcr.py` appends JSON Lines and fsyncs). The point is *when* it is called:
+    at each moment the obligation changes, not once at the end, so a process killed mid-run
+    (a per-server timeout, Ctrl-C, OOM) cannot destroy the only record of a created client.
+    Never raises: a failing journal must not turn a completed scan into an ERROR.
+    """
+    sink = getattr(ctx, "write_journal", None)
+    if sink is None:
+        return
+    try:
+        sink({
+            "gap_id": gap_id,
+            "target": ctx.target.url,
+            "registration_endpoint": endpoint,
+            "client_id": client_id,
+            "stage": stage,
+            "detail": detail,
+        })
+    except Exception as e:  # noqa: BLE001 — the Finding is still authoritative
+        ctx.discovery_notes.append(f"write journal failed ({type(e).__name__}: {e})")
+
+
+async def _cleanup_registration(probe: "Probe", reg: dict, target_url: str) -> str:
+    """Best-effort RFC 7592 delete of a client we just created. Returns a note.
+
+    The note always states the outcome. If the client could NOT be removed it contains the
+    `_CLEANUP_FAIL_MARKER` and the client_id, so a caller (or a human reading the report)
+    can deprovision it manually.
+    """
+    client_id = reg.get("client_id")
+    mgmt_uri = reg.get("registration_client_uri")
+    reg_token = reg.get("registration_access_token")
+
+    # RFC 7592 is OPTIONAL: without both the management URL and its token there is no
+    # spec-defined way to delete what we created.
+    if not mgmt_uri or not reg_token:
+        return (
+            f"⚠ {_CLEANUP_FAIL_MARKER}: server returned no RFC 7592 management fields "
+            f"(registration_client_uri / registration_access_token), so the client we "
+            f"created (client_id={client_id!r}) cannot be deleted programmatically — "
+            "deprovision it manually if the server is not yours."
+        )
+
+    # The management URI and the bearer token both come from the response body, i.e. the
+    # target picked them. A DELETE carrying an Authorization header is exactly the shape of
+    # request that must never be aimed at a host of someone else's choosing.
+    refusal = _write_target_refusal(str(mgmt_uri), target_url)
+    if refusal:
+        return (
+            f"⚠ {_CLEANUP_FAIL_MARKER}: the server pointed cleanup at "
+            f"{str(mgmt_uri)!r}, which we refused to contact ({refusal}) — sending a "
+            f"credential-bearing DELETE there could hit an unrelated host. "
+            f"client_id={client_id!r} still exists; deprovision it manually."
+        )
+
+    delete = await probe.request(
+        "DELETE", str(mgmt_uri),
+        headers={"Authorization": f"Bearer {reg_token}"},
+    )
+    if not delete.ok:
+        return (
+            f"⚠ {_CLEANUP_FAIL_MARKER}: DELETE {mgmt_uri} failed at transport level "
+            f"({delete.error}); client_id={client_id!r} may still exist."
+        )
+    if delete.status in (200, 204):
+        return f"Cleanup: client_id={client_id!r} deleted via RFC 7592 (HTTP {delete.status})."
+    return (
+        f"⚠ {_CLEANUP_FAIL_MARKER}: DELETE {mgmt_uri} returned HTTP {delete.status} "
+        f"(RFC 7592 delete unsupported?); client_id={client_id!r} may still exist."
+    )
+
+
 class OpenDcr(Detector):
     """#12 — Dynamic Client Registration accepts unauthenticated requests.
 
@@ -830,18 +934,9 @@ class OpenDcr(Detector):
             )
 
         probe: Probe = ctx.probe
-        payload = {
-            "client_name": "mcpauth-probe (auth-gap scanner, safe to delete)",
-            "redirect_uris": ["https://mcpauth.example/callback"],
-            "grant_types": ["authorization_code"],
-            "response_types": ["code"],
-            "token_endpoint_auth_method": "none",
-        }
         # No Authorization header == no RFC 7591 initial access token.
-        res = await probe.request(
-            "POST", endpoint,
-            headers={"Content-Type": "application/json"},
-            json_body=payload,
+        res = await _register_probe_client(
+            probe, endpoint, ["https://mcpauth.example/callback"]
         )
         if not res.ok:
             if res.connect_failed:
@@ -1013,66 +1108,249 @@ class OpenDcr(Detector):
         Never raises: a failing journal must not turn a completed scan into an ERROR, and
         the Finding still carries everything the journal would have.
         """
-        sink = getattr(ctx, "write_journal", None)
-        if sink is None:
-            return
-        try:
-            sink({
-                "gap_id": self.gap_id,
-                "target": ctx.target.url,
-                "registration_endpoint": endpoint,
-                "client_id": client_id,
-                "stage": stage,
-                "detail": detail,
-            })
-        except Exception as e:  # noqa: BLE001 — the Finding is still authoritative
-            ctx.discovery_notes.append(f"write journal failed ({type(e).__name__}: {e})")
+        _record_write(
+            ctx, self.gap_id, endpoint,
+            client_id=client_id, stage=stage, detail=detail,
+        )
 
     async def _cleanup(self, probe: "Probe", reg: dict, target_url: str) -> str:
-        """Best-effort RFC 7592 delete of the client we just created. Returns a note.
+        """Best-effort RFC 7592 delete of the client we just created (see the module helper)."""
+        return await _cleanup_registration(probe, reg, target_url)
 
-        The note always states the cleanup outcome. If the client could NOT be removed it
-        contains the _CLEANUP_FAIL_MARKER and the client_id, so a caller (or a human
-        reading the report) can deprovision it manually.
-        """
+
+# --------------------------------------------------------------------------- #14
+# Redirect URIs used only inside the authorization probe. Both are `.example` (RFC 6761
+# reserved, non-resolving), so even a server that wrongly honoured one would send nothing
+# anywhere real. They are on different hosts so the Location-header comparison is unambiguous.
+_REGISTERED_REDIRECT_URI = "https://mcpauth-callback.example/cb"
+_UNREGISTERED_REDIRECT_URI = "https://mcpauth-attacker.example/steal"
+
+
+class ImproperRedirectUriValidation(Detector):
+    """#14 — authorization server honours a redirect_uri the client never registered.
+
+    The authorization code is delivered to the redirect_uri, so an AS that will send a user
+    back to an address the client never registered lets an attacker capture the code (and
+    thus the token). OAuth 2.1 / MCP require the AS to reject any redirect_uri that is not an
+    exact match of a pre-registered value, and MUST NOT redirect to an invalid one.
+
+    SIDE EFFECT (why this is off by default): to test "an *unregistered* redirect_uri for a
+    *known* client" we must first obtain a known client — which means a real RFC 7591
+    registration (a write), exactly like #12. We register a throwaway client with one known
+    redirect_uri, send ONE unauthenticated GET to the authorization_endpoint carrying a
+    DIFFERENT (unregistered) redirect_uri, read only *where* the server tried to send the
+    browser, and then delete the client again via RFC 7592. It applies only where DCR is open
+    (otherwise there is no way to get a client without human sign-up).
+    """
+
+    gap_id = "improper-redirect-uri-validation"
+    name = "Authorization server accepts an unregistered redirect_uri"
+    tier = 2
+    needs_oauth = True
+    has_side_effects = True
+    severity = Severity.HIGH
+    spec_reference = (
+        "MCP Authorization / OAuth 2.1 §7.5.4: clients MUST pre-register redirect URIs and "
+        "the authorization server MUST validate exact redirect URIs against pre-registered "
+        "values, and MUST NOT redirect to an invalid redirection URI."
+    )
+
+    async def detect(self, ctx: ProbeContext):
+        na = self.require_http_transport(ctx)
+        if na:
+            return na
+        oauth = ctx.oauth
+        if oauth is None or not oauth.attempted:
+            return self.na("OAuth discovery was not run for this scan.")
+        if not oauth.as_metadata_usable:
+            return self.na(
+                "The AS metadata document is unusable (issuer mismatch, RFC 8414 §3.3), so "
+                "we will not act on the endpoints it advertises."
+            )
+        md = oauth.as_metadata or {}
+        authz_endpoint = md.get("authorization_endpoint")
+        reg_endpoint = md.get("registration_endpoint")
+        if not isinstance(authz_endpoint, str) or not authz_endpoint:
+            return self.na("AS metadata advertises no authorization_endpoint to test.")
+        if not isinstance(reg_endpoint, str) or not reg_endpoint:
+            return self.na(
+                "AS metadata advertises no registration_endpoint, so we cannot obtain a "
+                "client to test redirect_uri validation with (open DCR is the only way to get "
+                "one without human sign-up)."
+            )
+
+        # CONTAINMENT of the write (identical rule to #12): the registration endpoint was
+        # chosen by the scanned server, and registering is a write.
+        blocked = _write_target_refusal(reg_endpoint, ctx.target.url)
+        if blocked:
+            return self.finding(
+                Verdict.INCONCLUSIVE,
+                evidence=f"registration_endpoint = {reg_endpoint}",
+                notes=(
+                    f"REFUSED to register a test client: {blocked} No request was made, so "
+                    "redirect_uri validation could not be tested."
+                ),
+            )
+
+        probe: Probe = ctx.probe
+        res = await _register_probe_client(probe, reg_endpoint, [_REGISTERED_REDIRECT_URI])
+        if not res.ok:
+            if res.connect_failed:
+                return self.finding(
+                    Verdict.ERROR,
+                    evidence=res.evidence(),
+                    notes=(
+                        f"The registration POST never reached the server ({res.error}), so "
+                        "nothing was created and redirect_uri validation was not tested."
+                    ),
+                )
+            _record_write(
+                ctx, self.gap_id, reg_endpoint, client_id=None,
+                stage="attempted-outcome-unknown", detail=res.error,
+            )
+            return self.finding(
+                Verdict.ERROR,
+                evidence=res.evidence(),
+                notes=(
+                    f"⚠ {_CLEANUP_FAIL_MARKER}: the registration POST was delivered but the "
+                    f"exchange broke before we read a reply ({res.error}). A client may have "
+                    f"been created; inspect {reg_endpoint} manually. redirect_uri validation "
+                    "was not tested."
+                ),
+            )
+
+        reg = res.json if isinstance(res.json, dict) else {}
         client_id = reg.get("client_id")
-        mgmt_uri = reg.get("registration_client_uri")
-        reg_token = reg.get("registration_access_token")
+        created = res.status is not None and 200 <= res.status < 300
 
-        # RFC 7592 is OPTIONAL: without both the management URL and its token there is no
-        # spec-defined way to delete what we created.
-        if not mgmt_uri or not reg_token:
-            return (
-                f"⚠ {_CLEANUP_FAIL_MARKER}: server returned no RFC 7592 management fields "
-                f"(registration_client_uri / registration_access_token), so the client we "
-                f"created (client_id={client_id!r}) cannot be deleted programmatically — "
-                "deprovision it manually if the server is not yours."
+        if not created:
+            # No client obtained, so the redirect_uri rule cannot be tested here.
+            if is_auth_challenge(res)[0]:
+                return self.na(
+                    "Registration requires authorization, so no client could be obtained to "
+                    "test redirect_uri validation (this is the closed-DCR case #12 reports)."
+                )
+            return self.finding(
+                Verdict.INCONCLUSIVE,
+                evidence=res.evidence(),
+                notes=(
+                    f"Could not register a test client (HTTP {res.status}), so redirect_uri "
+                    "validation could not be tested."
+                ),
+            )
+        if not client_id:
+            _record_write(
+                ctx, self.gap_id, reg_endpoint, client_id=None,
+                stage="created-unparseable-body", detail=f"HTTP {res.status}",
+            )
+            return self.finding(
+                Verdict.INCONCLUSIVE,
+                evidence=res.evidence(),
+                notes=(
+                    f"⚠ {_CLEANUP_FAIL_MARKER}: registration returned HTTP {res.status} but "
+                    "no parseable client_id, so a client may exist we cannot name, and "
+                    f"redirect_uri validation could not be tested. Inspect {reg_endpoint}."
+                ),
             )
 
-        # The management URI and the bearer token both come from the response body, i.e. the
-        # target picked them. A DELETE carrying an Authorization header is exactly the shape
-        # of request that must never be aimed at a host of someone else's choosing.
-        refusal = _write_target_refusal(str(mgmt_uri), target_url)
-        if refusal:
+        # A client exists. Journal it before anything that can fail, then ALWAYS clean up
+        # before returning — whatever the probe finds.
+        _record_write(ctx, self.gap_id, reg_endpoint, client_id=str(client_id), stage="created")
+        try:
+            verdict, notes, evidence = await self._probe_redirect(
+                probe, ctx, authz_endpoint, str(client_id)
+            )
+        finally:
+            cleanup = await _cleanup_registration(probe, reg, ctx.target.url)
+            _record_write(
+                ctx, self.gap_id, reg_endpoint, client_id=str(client_id),
+                stage="cleanup-failed" if _CLEANUP_FAIL_MARKER in cleanup else "deleted",
+                detail=cleanup,
+            )
+        return self.finding(verdict, evidence=evidence, notes=f"{notes} {cleanup}")
+
+    async def _probe_redirect(self, probe: "Probe", ctx: ProbeContext, authz_endpoint: str,
+                              client_id: str):
+        """One unauthenticated GET to the authorization endpoint with an UNREGISTERED
+        redirect_uri. Returns (verdict, notes, evidence). Registers/deletes nothing."""
+        # A read, but the endpoint was chosen by the scanned server, so it still goes through
+        # the SSRF guard (no private space, no non-http scheme).
+        risk = is_ssrf_risk(authz_endpoint, ctx.target.url)
+        if risk:
             return (
-                f"⚠ {_CLEANUP_FAIL_MARKER}: the server pointed cleanup at "
-                f"{str(mgmt_uri)!r}, which we refused to contact ({refusal}) — sending a "
-                f"credential-bearing DELETE there could hit an unrelated host. "
-                f"client_id={client_id!r} still exists; deprovision it manually."
+                Verdict.INCONCLUSIVE,
+                f"REFUSED to contact the authorization_endpoint ({risk}), so redirect_uri "
+                "validation could not be tested.",
+                f"authorization_endpoint = {authz_endpoint}",
+            )
+        sep = "&" if "?" in authz_endpoint else "?"
+        query = urlencode({
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": _UNREGISTERED_REDIRECT_URI,
+            "state": "mcpauth-redirect-probe",
+        })
+        res = await probe.request("GET", f"{authz_endpoint}{sep}{query}")
+        if not res.ok:
+            return (
+                Verdict.INCONCLUSIVE,
+                f"The authorization request failed at transport level ({res.error}), so "
+                "redirect_uri validation could not be tested.",
+                res.evidence(),
             )
 
-        delete = await probe.request(
-            "DELETE", str(mgmt_uri),
-            headers={"Authorization": f"Bearer {reg_token}"},
-        )
-        if not delete.ok:
+        location = res.headers.get("location", "")
+        loc_host = (urlsplit(location).hostname or "").lower() if location else ""
+        bogus_host = (urlsplit(_UNREGISTERED_REDIRECT_URI).hostname or "").lower()
+        authz_host = (urlsplit(authz_endpoint).hostname or "").lower()
+        is_redirect = res.status in (301, 302, 303, 307, 308)
+
+        if is_redirect and loc_host == bogus_host:
             return (
-                f"⚠ {_CLEANUP_FAIL_MARKER}: DELETE {mgmt_uri} failed at transport level "
-                f"({delete.error}); client_id={client_id!r} may still exist."
+                Verdict.HAS_GAP,
+                (
+                    "The authorization server redirected to the UNREGISTERED redirect_uri we "
+                    f"supplied ({_UNREGISTERED_REDIRECT_URI!r}) — it did not validate it "
+                    "against the client's registered value, so an attacker who lures a user "
+                    "to a crafted authorize link could capture the authorization code."
+                ),
+                f"{res.request_line()}\n-> HTTP {res.status}, Location: {location}",
             )
-        if delete.status in (200, 204):
-            return f"Cleanup: client_id={client_id!r} deleted via RFC 7592 (HTTP {delete.status})."
+        if is_redirect and loc_host and loc_host == authz_host:
+            return (
+                Verdict.INCONCLUSIVE,
+                (
+                    "The authorization server redirected to its own login page rather than to "
+                    "our redirect_uri, so it likely defers redirect_uri validation until after "
+                    "login — which this unauthenticated probe cannot reach."
+                ),
+                f"{res.request_line()}\n-> HTTP {res.status}, Location: {location}",
+            )
+        if 400 <= res.status < 500:
+            return (
+                Verdict.NO_GAP,
+                (
+                    f"The authorization server rejected the request (HTTP {res.status}) "
+                    "without redirecting to the unregistered redirect_uri — consistent with "
+                    "validating it against the client's registered value."
+                ),
+                res.evidence(),
+            )
+        if is_redirect and loc_host:
+            return (
+                Verdict.NO_GAP,
+                (
+                    f"The authorization server redirected to {loc_host!r}, not to the "
+                    "unregistered redirect_uri we supplied, so it did not honour it."
+                ),
+                f"{res.request_line()}\n-> HTTP {res.status}, Location: {location}",
+            )
         return (
-            f"⚠ {_CLEANUP_FAIL_MARKER}: DELETE {mgmt_uri} returned HTTP {delete.status} "
-            f"(RFC 7592 delete unsupported?); client_id={client_id!r} may still exist."
+            Verdict.INCONCLUSIVE,
+            (
+                f"The authorization server answered HTTP {res.status} (likely a login or "
+                "consent page); whether it validates redirect_uri cannot be determined "
+                "without completing a login."
+            ),
+            res.evidence(),
         )

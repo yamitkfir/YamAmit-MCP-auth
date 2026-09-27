@@ -20,6 +20,7 @@ __all__ = [
     "NoAuthenticationRemote",
     "NoTlsTransport",
     "SessionIdInUrl",
+    "UnauthenticatedToolInvocation",
     "_is_tls_failure",
 ]
 
@@ -480,4 +481,157 @@ class SessionIdInUrl(Detector):
                 "No header session id and no URL-borne session id observed. The server may "
                 "be stateless (no session at all), in which case this gap cannot apply."
             ),
+        )
+
+
+# A tool name chosen so it cannot match a real tool, so this probe can never accidentally
+# invoke anything: a conformant server rejects it ("unknown tool") *after* the request has
+# already cleared any transport-level authentication gate — which is all this detector reads.
+_NONEXISTENT_TOOL = "__mcpauth_probe_nonexistent_tool__"
+
+
+def _is_auth_flavoured_error(err) -> bool:
+    """True if a JSON-RPC error object reads like an authentication/authorization decision.
+
+    Used only to avoid grading a (non-conformant) server that reports an auth failure as a
+    JSON-RPC error instead of the HTTP 401 the spec requires. Deliberately conservative: it
+    biases toward INCONCLUSIVE, never toward HAS_GAP.
+    """
+    if isinstance(err, dict):
+        text = " ".join(str(err.get(k, "")) for k in ("message", "code", "data")).lower()
+    else:
+        text = str(err).lower()
+    return any(
+        kw in text
+        for kw in (
+            "unauthor", "authentic", "forbidden", "token", "credential",
+            "permission", "not allowed", "401", "403",
+        )
+    )
+
+
+class UnauthenticatedToolInvocation(Detector):
+    """#13 — remote server dispatches a tools/call with no credential at all.
+
+    #1 (no-authentication-remote) proves only that the *catalog* is readable without a
+    login: it sends tools/list, never tools/call. On the common architecture — one auth
+    gate at the transport, in front of every method — an ungated tools/list implies an
+    ungated tools/call, but a server may gate the two differently (a public catalog with
+    gated execution is a legitimate design), so #1 cannot tell them apart. This detector
+    measures the *invocation* path directly, which is what #1 can only infer.
+
+    Safe by design: it calls a deliberately non-existent tool with empty arguments, so a
+    conformant server rejects it ("unknown tool") without executing anything. What we read
+    is not any tool output but *where the rejection came from*: an HTTP 401 (or a
+    corroborated 403) means the transport auth gate stopped us before dispatch; a JSON-RPC
+    reply — result OR error — means our unauthenticated call reached the MCP dispatch layer,
+    i.e. the invocation path is not gated.
+    """
+
+    gap_id = "unauthenticated-tool-invocation"
+    name = "Tool invocation without authentication"
+    tier = 1
+    severity = Severity.HIGH
+    spec_reference = (
+        "MCP Authorization: a protected MCP server MUST validate a bearer token before "
+        "processing a request and MUST answer 401 when authorization is required. "
+        "tools/call is a privileged operation, so reaching its dispatch with no credential "
+        "means the invocation path is unauthenticated."
+    )
+
+    async def detect(self, ctx: ProbeContext):
+        na = self.require_http_transport(ctx)
+        if na:
+            return na
+
+        probe: Probe = ctx.probe
+        # A privileged INVOCATION with NO Authorization header. The session id (if the
+        # handshake got one) is carried — it is plumbing, not a credential — for the same
+        # reason as #1: withholding it would make a wide-open stateful server look secured.
+        res = await probe.mcp_call(
+            ctx.target.url,
+            "tools/call",
+            {"name": _NONEXISTENT_TOOL, "arguments": {}},
+            headers=ctx.session_headers(),
+        )
+        if not res.ok:
+            return self.finding(Verdict.ERROR, evidence=res.evidence())
+
+        challenged, why = is_auth_challenge(res)
+        if challenged:
+            return self.finding(
+                Verdict.NO_GAP,
+                evidence=res.evidence(),
+                notes=(
+                    f"Server rejected an unauthenticated tools/call ({why}); the invocation "
+                    "path requires authentication."
+                ),
+            )
+
+        result = jsonrpc_result(res)
+        err = jsonrpc_error(res)
+        reached_dispatch = (
+            res.status is not None
+            and 200 <= res.status < 300
+            and (result is not None or err is not None or truncated_success(res))
+        )
+        if reached_dispatch:
+            # A JSON-RPC reply means the request was parsed and dispatched at the MCP layer,
+            # past any transport auth gate. For a non-existent tool the reply is normally an
+            # error ("unknown tool") — exactly the proof we want. Guard the one non-conformant
+            # shape: a server that reports an AUTH failure as a JSON-RPC error (rather than the
+            # HTTP 401 the spec requires) must not be graded open.
+            if err is not None and _is_auth_flavoured_error(err):
+                return self.finding(
+                    Verdict.INCONCLUSIVE,
+                    evidence=res.evidence(),
+                    notes=(
+                        "tools/call returned a JSON-RPC error that reads as an authorization "
+                        "decision rather than a tool-dispatch error, so it is unclear whether "
+                        "the invocation path is gated (the spec requires HTTP 401 for this)."
+                    ),
+                )
+            detail = (
+                "a result" if result is not None
+                else f"error {err!r}" if err is not None
+                else "a truncated result"
+            )
+            return self.finding(
+                Verdict.HAS_GAP,
+                evidence=res.evidence(),
+                notes=(
+                    f"An unauthenticated tools/call reached the MCP dispatch layer (the "
+                    f"server replied with {detail}) — tool invocation is not gated by "
+                    "authentication. A non-existent tool name was used, so nothing was "
+                    "executed; this measures the invocation path #1 can only infer."
+                ),
+            )
+
+        if res.status == 403:
+            return self.finding(
+                Verdict.INCONCLUSIVE,
+                evidence=res.evidence(),
+                notes=(
+                    f"{why}. The invocation may well require authentication, but this "
+                    "response does not prove it — a blocked scan looks the same."
+                ),
+            )
+
+        hint = ""
+        if res.status == 400:
+            hint = (
+                " A 400 often means the request was incomplete for this server (e.g. it "
+                "wanted a session id or protocol header) rather than an auth decision."
+            )
+        elif res.status in (404, 405):
+            hint = (
+                " A 404/405 on a POST often means this URL is a legacy two-channel SSE "
+                "endpoint rather than a Streamable HTTP endpoint."
+            )
+        elif res.status == 429:
+            hint = " A 429 means we were rate-limited; nothing about auth was observed."
+        return self.finding(
+            Verdict.INCONCLUSIVE,
+            evidence=res.evidence(),
+            notes=f"Unexpected status {res.status}; could not confirm invocation access.{hint}",
         )
