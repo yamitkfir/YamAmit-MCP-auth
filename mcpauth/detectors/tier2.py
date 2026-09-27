@@ -10,7 +10,7 @@ Honesty notes baked into the verdicts (see the constraints rules):
     general web-security heuristic, never cited as a spec violation.
   * #12 open-dcr: RFC 7591 §3 actually SAYS open registration SHOULD be supported.
     We report "open" as a security-relevant posture (it is the prerequisite for the
-    confused-deputy attack, #16), not as a spec violation — the note says so, and the
+    confused-deputy attack), not as a spec violation — the note says so, and the
     detector performs a real registration POST (a write) which the docs flag.
 """
 
@@ -786,7 +786,7 @@ class OpenDcr(Detector):
     has_side_effects = True  # performs a real RFC 7591 registration POST (a write)
     spec_reference = (
         "RFC 7591 §3: open registration is permitted (SHOULD), but an unauthenticated "
-        "registration endpoint is the prerequisite for the confused-deputy attack (#16) "
+        "registration endpoint is the prerequisite for the confused-deputy attack "
         "and for registration flooding. Cleanup uses RFC 7592 §2.3 (DELETE -> 204)."
     )
 
@@ -929,7 +929,7 @@ class OpenDcr(Detector):
                 evidence=f"{res.request_line()}\n-> HTTP {res.status}, client_id={client_id!r}",
                 notes=(
                     "Registration succeeded with no initial access token — anyone can mint a "
-                    "client. RFC 7591 permits this, but it enables confused-deputy (#16); "
+                    "client. RFC 7591 permits this, but it enables confused-deputy; "
                     f"consider an allowlist or pre-shared registration token. {cleanup}"
                 ),
             )

@@ -31,6 +31,7 @@ context7-sse|https://mcp.context7.com/sse
 cloudflare-bbrowser|https://browser.mcp.cloudflare.com/sse
 sentry-sse|https://mcp.sentry.dev/sse
 hf-sse|https://hf.co/mcp/sse
+# DEAD as of 2026-09-27: remote.mcpservers.org no longer resolves (ClientConnectorDNSError). The next two entries produce ERROR verdicts. Kept for now; removal pending Yamit's OK.
 fetch-mcp|https://remote.mcpservers.org/fetch/mcp
 sequentialthinking|https://remote.mcpservers.org/sequentialthinking/mcp
 edgeone|https://mcp-on-edge.edgeone.app/mcp-server
@@ -42,6 +43,7 @@ getperspective|https://getperspective.ai/mcp
 atars-mcp|https://mcp.aarna.ai/mcp
 dock|https://trydock.ai/api/mcp
 stompy|https://mcp.stompy.ai
+# DEAD as of 2026-09-27: api.serff.ai no longer resolves (ClientConnectorDNSError); produces an ERROR verdict. Kept for now; removal pending Yamit's OK.
 ca-rate-filings|https://api.serff.ai/mcp
 company-search|https://trycanonical.ai/mcp
 krtr|https://www.krtr.ai/api/mcp
@@ -49,6 +51,7 @@ library-2|https://teenadhd.ai/api/mcp/v1
 mcp-mailjunky|https://mcp.mailjunky.ai/sse
 crane-ledger|https://api.craneledger.ai/mcp
 web-agent|https://agent.tinyfish.ai/mcp
+# DEAD as of 2026-09-27: unreachable (TimeoutError); produces an ERROR verdict. Kept for now; removal pending Yamit's OK.
 hostprofit-mcp-production-up-railway-app|https://hostprofit-mcp-production.up.railway.app/mcp
 just-publish|https://mcp.justpublish.ai/
 directory|https://directory.boolsai.ai/mcp

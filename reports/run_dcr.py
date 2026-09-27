@@ -103,8 +103,8 @@ def _could_have_written(registration_endpoint) -> bool:
 
     With no `registration_endpoint`, `OpenDcr` had nowhere to POST and returns
     NOT_APPLICABLE before sending anything, so flagging cleanup would invent an obligation
-    that can never be discharged. `reports/dcr_scan.md` over-reports by exactly one row for
-    this reason.
+    that can never be discharged. (The committed `reports/dcr_scan.md` previously
+    over-reported one such row — the hostprofit timeout — corrected to 38 on 2026-09-27.)
     """
     return isinstance(registration_endpoint, str) and bool(registration_endpoint)
 
@@ -147,8 +147,8 @@ async def dcr_one(name: str, url: str) -> dict:
         # manual cleanup needed". But only claim an obligation when a write was actually
         # possible: with no `registration_endpoint`, `OpenDcr` had nowhere to POST and
         # returns NOT_APPLICABLE before sending anything, so flagging cleanup here invents
-        # an obligation that can never be discharged. The committed
-        # `reports/dcr_scan.md` over-reports by exactly one row for this reason.
+        # an obligation that can never be discharged. (The committed `reports/dcr_scan.md`
+        # previously over-reported one such row — the hostprofit timeout — corrected 2026-09-27.)
         could_have_written = _could_have_written(registration_endpoint)
         if could_have_written:
             _journal_abort(url, registration_endpoint, e)

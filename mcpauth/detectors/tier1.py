@@ -25,12 +25,20 @@ __all__ = [
 
 
 class NoAuthenticationRemote(Detector):
-    """#1 — remote server invokes tools with no credentials at all."""
+    """#1 — remote server returns its tool catalog to an unauthenticated caller.
+
+    What this proves is capability *disclosure*: a stranger holding no credential can read
+    what the server offers. It does NOT prove a stranger can *invoke* anything — we send
+    tools/list (a read), never tools/call, so tool execution is untested. On the common
+    architecture (one auth gate at the transport, in front of every method) an ungated
+    tools/list implies an ungated tools/call, but a server may gate the two differently, so
+    the stronger "anyone can use this server" is an inference we do not measure here.
+    """
 
     gap_id = "no-authentication-remote"
     name = "No authentication on remote MCP server"
     tier = 1
-    severity = Severity.CRITICAL
+    severity = Severity.MEDIUM
     spec_reference = (
         "Transports §Security: servers SHOULD authenticate all connections. "
         "A protected server MUST answer 401 when authorization is required."
@@ -58,7 +66,12 @@ class NoAuthenticationRemote(Detector):
             return self.finding(
                 Verdict.HAS_GAP,
                 evidence=res.evidence(),
-                notes=f"tools/list returned {len(tools)} tool(s) without any credential.",
+                notes=(
+                    f"tools/list returned {len(tools)} tool(s) to a caller with no "
+                    "credential — the tool catalog is exposed without login (capability "
+                    "disclosure). Whether these tools can be invoked without a credential "
+                    "was not tested (we never send tools/call)."
+                ),
             )
 
         if res.status == 200 and truncated_success(res):
@@ -70,10 +83,12 @@ class NoAuthenticationRemote(Detector):
                 Verdict.HAS_GAP,
                 evidence=res.evidence(),
                 notes=(
-                    "tools/list returned a result without any credential. The response "
+                    "tools/list returned a result to a caller with no credential — the tool "
+                    "catalog is exposed without login (capability disclosure). The response "
                     "exceeded the read cap so it could not be parsed in full, and the tool "
                     "count is therefore not reported — but the server answered the "
-                    "privileged call."
+                    "unauthenticated call. Whether the tools can be invoked without a "
+                    "credential was not tested (we never send tools/call)."
                 ),
             )
 
