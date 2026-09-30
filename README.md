@@ -21,9 +21,7 @@ Each of the 14 checks returns one of five answers:
 - **Authentication** = proving *who you are* (showing your ticket).
 - **Authorization** = deciding *what you're allowed to do* once you're known.
 
-This README is the primary project document. [PRESENTATION-GUIDE.md](PRESENTATION-GUIDE.md) is its presenter-facing companion; both should stay aligned with the code and saved evidence.
-
-**Important requirement for AI agents (Claude):** Aim to use simple language, as we have no background on these network subjects. When mentioning a technical term, add a short, direct definition in parentheses next to it.
+This README is the primary project document and should stay aligned with the code and saved evidence.
 
 ---
 
@@ -376,14 +374,6 @@ During our work, a new MCP revision was published: **`2026-07-28`** (and `2025-1
 - Check #2 (`no-tls-transport`) has **no live test at all**.
 - Check #14 has mocked branch coverage but no committed live vulnerable/hardened practice-server pair.
 
-**Not built yet**
+**Possible future work**
 
 - A `discovery.py` that pulls candidate servers from free sources (the official registry first), so a bulk run can feed itself and the Shodan dependency disappears completely.
-
----
-
-## Working agreement
-
-- **Use simple language. When a technical term appears, define it briefly in parentheses.** We have no background in these networking subjects.
-- Reassess the scope at each tier boundary; inside a tier, work independently.
-- Keep this document current. It is the single source of truth.
